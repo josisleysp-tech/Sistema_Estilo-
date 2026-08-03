@@ -1,0 +1,8 @@
+{
+  "name": "Remix ERP Empresarial",
+  "description": "Painel de controle industrial completo com gestão de vendas, controle de estoque, painel de produção Kanban, relatórios de custos e controle de acessos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
