@@ -36,6 +36,7 @@ interface OrderQueryTabProps {
   productionOrders: ProductionOrder[];
   inventory?: InventoryItem[];
   customers?: Customer[];
+  industrialSegments?: string[];
   onUpdatePaymentMethod: (id: string, newPaymentMethod: string) => void;
   onUpdateStatus?: (id: string, newStatus: SalesOrder['status']) => void;
   onUpdateSalesOrder?: (id: string, updatedFields: Partial<SalesOrder>) => void;
@@ -50,6 +51,7 @@ export default function OrderQueryTab({
   productionOrders,
   inventory = [],
   customers = [],
+  industrialSegments = ['Cliente Final', 'Lojista'],
   onUpdatePaymentMethod, 
   onUpdateStatus,
   onUpdateSalesOrder,
@@ -327,23 +329,23 @@ export default function OrderQueryTab({
 
       // Apply client search
       const matchesClient = clientSearch.trim() === '' || 
-        order.client.toLowerCase().includes(clientSearch.toLowerCase());
+        String(order.client || '').toLowerCase().includes(clientSearch.toLowerCase());
 
       // Apply order id search
       const matchesId = orderIdSearch.trim() === '' || 
-        order.id.toLowerCase().includes(orderIdSearch.toLowerCase());
+        String(order.id || '').toLowerCase().includes(orderIdSearch.toLowerCase());
 
       // Apply product search
       const query = productSearch.toLowerCase().trim();
       let matchesProduct = query === '';
       if (query !== '') {
-        if (order.items && order.items.toLowerCase().includes(query)) {
+        if (order.items && String(order.items).toLowerCase().includes(query)) {
           matchesProduct = true;
         }
         if (order.products && order.products.length > 0) {
           const hasMatchingProduct = order.products.some(p => 
-            p.name.toLowerCase().includes(query) || 
-            p.sku.toLowerCase().includes(query)
+            String(p.name || '').toLowerCase().includes(query) || 
+            String(p.sku || '').toLowerCase().includes(query)
           );
           if (hasMatchingProduct) {
             matchesProduct = true;
@@ -403,25 +405,25 @@ export default function OrderQueryTab({
     return salesOrders.filter(order => {
       // 1. Client filter
       const matchesClient = clientSearch.trim() === '' || 
-        order.client.toLowerCase().includes(clientSearch.toLowerCase());
+        String(order.client || '').toLowerCase().includes(clientSearch.toLowerCase());
 
       // 2. Order number / ID filter
       const matchesId = orderIdSearch.trim() === '' || 
-        order.id.toLowerCase().includes(orderIdSearch.toLowerCase());
+        String(order.id || '').toLowerCase().includes(orderIdSearch.toLowerCase());
 
       // 3. Product filter (can match product name, SKU in the products array, or raw items string for legacy)
       const query = productSearch.toLowerCase().trim();
       let matchesProduct = query === '';
       if (query !== '') {
         // Check items description string
-        if (order.items && order.items.toLowerCase().includes(query)) {
+        if (order.items && String(order.items).toLowerCase().includes(query)) {
           matchesProduct = true;
         }
         // Check the structured products array if present
         if (order.products && order.products.length > 0) {
           const hasMatchingProduct = order.products.some(p => 
-            p.name.toLowerCase().includes(query) || 
-            p.sku.toLowerCase().includes(query)
+            String(p.name || '').toLowerCase().includes(query) || 
+            String(p.sku || '').toLowerCase().includes(query)
           );
           if (hasMatchingProduct) {
             matchesProduct = true;
@@ -1234,7 +1236,12 @@ export default function OrderQueryTab({
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <span className="text-[9px] font-bold text-slate-400 uppercase block leading-none mb-0.5">Cliente</span>
-                              <span className="font-semibold text-slate-800">{order.client}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-slate-800">{order.client}</span>
+                                <span className="inline-flex items-center gap-0.5 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                                  {order.clientSegment === 'Lojista' ? '🏪' : '🏢'} {order.clientSegment || 'Cliente Final'}
+                                </span>
+                              </div>
                             </div>
                             {!hideOrderValues && (
                               <div className="text-right">
@@ -1370,16 +1377,37 @@ export default function OrderQueryTab({
               {/* Top Summary Info */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-4 bg-slate-50 border border-slate-100 rounded-xl">
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Cliente</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Cliente & Tipo</span>
                   {isEditing && editOrder ? (
-                    <input
-                      type="text"
-                      value={editOrder.client}
-                      onChange={(e) => setEditOrder({ ...editOrder, client: e.target.value })}
-                      className="w-full text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        value={editOrder.client}
+                        onChange={(e) => setEditOrder({ ...editOrder, client: e.target.value })}
+                        className="w-full text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <select
+                        value={editOrder.clientSegment || 'Cliente Final'}
+                        onChange={(e) => setEditOrder({ ...editOrder, clientSegment: e.target.value })}
+                        className="w-full text-[10px] font-bold text-indigo-700 bg-indigo-50/60 border border-indigo-200 rounded px-1 py-0.5 focus:outline-none cursor-pointer"
+                      >
+                        <option value="Cliente Final">🏢 Cliente Final</option>
+                        <option value="Lojista">🏪 Lojista</option>
+                        {industrialSegments
+                          .filter(s => !['Cliente Final', 'Lojista'].includes(s))
+                          .map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))
+                        }
+                      </select>
+                    </div>
                   ) : (
-                    <p className="font-bold text-slate-800">{selectedOrder.client}</p>
+                    <div>
+                      <p className="font-bold text-slate-800">{selectedOrder.client}</p>
+                      <span className="inline-flex items-center gap-0.5 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] font-bold mt-0.5">
+                        {selectedOrder.clientSegment === 'Lojista' ? '🏪' : '🏢'} {selectedOrder.clientSegment || 'Cliente Final'}
+                      </span>
+                    </div>
                   )}
                 </div>
                 <div>
@@ -1685,6 +1713,32 @@ export default function OrderQueryTab({
                           className="w-16 font-mono text-center text-xs text-slate-700 bg-white border border-slate-200 rounded px-1 py-0.5 focus:ring-1 focus:ring-indigo-500"
                         />
                       </div>
+
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold">
+                        <span>Comissão (%):</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={editOrder.commissionPercentage || 0}
+                          onChange={(e) => {
+                            const pct = parseFloat(e.target.value) || 0;
+                            const commVal = parseFloat(((editOrder.value * pct) / 100).toFixed(2));
+                            setEditOrder({
+                              ...editOrder,
+                              commissionPercentage: pct,
+                              commissionValue: commVal
+                            });
+                          }}
+                          className="w-16 font-mono text-center text-xs text-slate-700 bg-white border border-slate-200 rounded px-1 py-0.5 focus:ring-1 focus:ring-indigo-500"
+                        />
+                        {editOrder.commissionPercentage ? (
+                          <span className="text-[10px] text-emerald-600 font-bold">
+                            (R$ {(((editOrder.value || 0) * (editOrder.commissionPercentage || 0)) / 100).toFixed(2)})
+                          </span>
+                        ) : null}
+                      </div>
                       
                       {(!editOrder.products || editOrder.products.length === 0) ? (
                         <div className="flex items-center gap-1.5">
@@ -1748,6 +1802,16 @@ export default function OrderQueryTab({
                         <div className="text-[10px] text-right text-slate-500 space-y-0.5 font-bold border-t border-slate-100 pt-1.5 w-full">
                           <div>Valor Pago: <span className="font-mono text-emerald-600 font-bold">R$ {(selectedOrder.paidAmount || 0).toFixed(2)}</span></div>
                           <div>Valor em Aberto: <span className={`font-mono px-1.5 py-0.5 rounded font-black ${selectedOrder.value - (selectedOrder.paidAmount || 0) > 0 ? 'text-rose-600 bg-rose-50 border border-rose-150/30 animate-pulse' : 'text-emerald-700 bg-emerald-50 border border-emerald-150/30'}`}>R$ {Math.max(0, selectedOrder.value - (selectedOrder.paidAmount || 0)).toFixed(2)}</span></div>
+                          {selectedOrder.commissionPercentage !== undefined && selectedOrder.commissionPercentage > 0 && (
+                            <div className="text-indigo-700 pt-0.5">
+                              Comissão ({selectedOrder.commissionPercentage}%): <span className="font-mono font-bold">R$ {(selectedOrder.commissionValue || ((selectedOrder.value * selectedOrder.commissionPercentage) / 100)).toFixed(2)}</span>
+                              {selectedOrder.commissionPaid ? (
+                                <span className="ml-1 bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded text-[8px] uppercase font-mono">Paga</span>
+                              ) : (
+                                <span className="ml-1 bg-amber-100 text-amber-800 px-1 py-0.2 rounded text-[8px] uppercase font-mono">Pendente</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </>

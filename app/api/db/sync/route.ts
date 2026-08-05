@@ -393,6 +393,8 @@ async function ensureTablesExist(db: any) {
               "hide_order_values" boolean DEFAULT false,
               "pin" text NOT NULL,
               "allowed_tabs" jsonb DEFAULT '[]'::jsonb,
+              "commission_eligible" boolean DEFAULT false,
+              "commission_percentage" double precision DEFAULT 0,
               "updated_at" text
             );
           `);
@@ -479,6 +481,7 @@ async function ensureTablesExist(db: any) {
         try {
           console.log(`Ensuring columns "serial_number", "last_operator", "updated_at", "project_files", "project_images" exist in "sales_orders"...`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "serial_number" integer DEFAULT 0;`);
+          await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "client_segment" text;`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "last_operator" text;`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "updated_at" text;`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "project_files" jsonb DEFAULT '[]'::jsonb;`);
@@ -487,6 +490,8 @@ async function ensureTablesExist(db: any) {
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "boleto_due_date" text;`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "paid_amount" double precision DEFAULT 0;`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "boleto_installments" jsonb DEFAULT '[]'::jsonb;`);
+          await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "commission_percentage" double precision DEFAULT 0;`);
+          await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "commission_value" double precision DEFAULT 0;`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "commission_paid" boolean DEFAULT false;`);
           await db.execute(sql`ALTER TABLE "sales_orders" ADD COLUMN IF NOT EXISTS "commission_payout_id" text;`);
           console.log(`Columns for "sales_orders" checked/added successfully.`);
@@ -876,6 +881,7 @@ export async function POST(req: NextRequest) {
         const mappedSales = salesOrders.map((so: any) => ({
           id: String(so.id),
           client: String(so.client || ""),
+          clientSegment: so.clientSegment || so.client_segment || null,
           clientDocument: so.clientDocument || null,
           date: String(so.date || ""),
           deliveryDate: so.deliveryDate || null,
@@ -895,6 +901,8 @@ export async function POST(req: NextRequest) {
           boletoDueDate: so.boletoDueDate || so.boleto_due_date || null,
           paidAmount: Number(so.paidAmount ?? so.paid_amount ?? 0),
           boletoInstallments: Array.isArray(so.boletoInstallments) ? so.boletoInstallments : (Array.isArray(so.boleto_installments) ? so.boleto_installments : []),
+          commissionPercentage: Number(so.commissionPercentage ?? so.commission_percentage ?? 0),
+          commissionValue: Number(so.commissionValue ?? so.commission_value ?? 0),
           commissionPaid: Boolean(so.commissionPaid ?? so.commission_paid ?? false),
           commissionPayoutId: so.commissionPayoutId || so.commission_payout_id || null,
           updatedAt: so.updatedAt || new Date().toISOString(),
@@ -906,6 +914,7 @@ export async function POST(req: NextRequest) {
             target: schema.salesOrders.id,
             set: {
               client: sql`excluded.client`,
+              clientSegment: sql`excluded.client_segment`,
               clientDocument: sql`excluded.client_document`,
               date: sql`excluded.date`,
               deliveryDate: sql`excluded.delivery_date`,
@@ -925,6 +934,8 @@ export async function POST(req: NextRequest) {
               boletoDueDate: sql`excluded.boleto_due_date`,
               paidAmount: sql`excluded.paid_amount`,
               boletoInstallments: sql`excluded.boleto_installments`,
+              commissionPercentage: sql`excluded.commission_percentage`,
+              commissionValue: sql`excluded.commission_value`,
               commissionPaid: sql`excluded.commission_paid`,
               commissionPayoutId: sql`excluded.commission_payout_id`,
               updatedAt: sql`excluded.updated_at`

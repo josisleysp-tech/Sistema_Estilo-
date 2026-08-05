@@ -212,14 +212,15 @@ export default function SupplierTab({
 
   // Filtered Suppliers list
   const filteredSuppliers = useMemo(() => {
+    const searchLower = String(searchTerm || '').toLowerCase();
     return suppliers.filter(s => {
       const matchText = 
-        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (s.tradeName && s.tradeName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        s.cnpj.includes(searchTerm) ||
-        s.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (s.contactPerson && s.contactPerson.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        s.category.toLowerCase().includes(searchTerm.toLowerCase());
+        String(s.name || '').toLowerCase().includes(searchLower) ||
+        (s.tradeName && String(s.tradeName).toLowerCase().includes(searchLower)) ||
+        String(s.cnpj || '').includes(searchTerm) ||
+        String(s.email || '').toLowerCase().includes(searchLower) ||
+        (s.contactPerson && String(s.contactPerson).toLowerCase().includes(searchLower)) ||
+        String(s.category || '').toLowerCase().includes(searchLower);
 
       const matchCategory = selectedCategory === 'Todas' || s.category === selectedCategory;
       const matchStatus = selectedStatus === 'Todos' || s.status === selectedStatus;

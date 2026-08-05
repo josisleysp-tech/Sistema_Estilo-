@@ -229,14 +229,14 @@ export default function ProductionTab({
       const clientNickname = customerMatch?.nickname || '';
 
       const matchesSearch = 
-        op.product.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        op.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        op.supervisor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (op.operator && op.operator.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (op.salesOrderId && op.salesOrderId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        String(op.product || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(op.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(op.supervisor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (op.operator && String(op.operator).toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (op.salesOrderId && String(op.salesOrderId).toLowerCase().includes(searchTerm.toLowerCase())) ||
         (op.salesOrderClient && (
-          op.salesOrderClient.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          clientNickname.toLowerCase().includes(searchTerm.toLowerCase())
+          String(op.salesOrderClient).toLowerCase().includes(searchTerm.toLowerCase()) ||
+          String(clientNickname).toLowerCase().includes(searchTerm.toLowerCase())
         ));
       
       const matchesLine = lineFilter === 'Todas' || op.line === lineFilter;

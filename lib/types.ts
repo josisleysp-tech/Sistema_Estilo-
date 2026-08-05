@@ -53,6 +53,7 @@ export interface SalesOrder {
   id: string;
   serialNumber?: number;
   client: string;
+  clientSegment?: string;
   value: number;
   date: string;
   status: 'Pendente' | 'Faturado' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Orçamento';
@@ -87,6 +88,8 @@ export interface SalesOrder {
     value: number;
     paid: boolean;
   }>;
+  commissionPercentage?: number;
+  commissionValue?: number;
   commissionPaid?: boolean;
   commissionPayoutId?: string;
   updatedAt?: string;

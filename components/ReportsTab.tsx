@@ -166,12 +166,12 @@ export default function ReportsTab({
 
   const searchedSalesByCustomer = useMemo(() => {
     return salesByCustomer.filter(item => {
-      const searchLower = customerSearch.toLowerCase();
+      const searchLower = String(customerSearch || '').toLowerCase();
       return (
-        item.customerName.toLowerCase().includes(searchLower) ||
-        item.nickname.toLowerCase().includes(searchLower) ||
-        item.cnpj.includes(searchLower) ||
-        item.segment.toLowerCase().includes(searchLower)
+        String(item.customerName || '').toLowerCase().includes(searchLower) ||
+        String(item.nickname || '').toLowerCase().includes(searchLower) ||
+        String(item.cnpj || '').includes(searchLower) ||
+        String(item.segment || '').toLowerCase().includes(searchLower)
       );
     });
   }, [salesByCustomer, customerSearch]);
@@ -242,7 +242,7 @@ export default function ReportsTab({
         });
       } else {
         // Parse from `items` text
-        const desc = order.items.toLowerCase();
+        const desc = String(order.items || '').toLowerCase();
         let category = 'Acessórios';
         if (desc.includes('coifa')) category = 'Coifas & Sistemas';
         else if (desc.includes('duto') || desc.includes('curva') || desc.includes('tubo')) category = 'Dutos & Conexões';
@@ -331,7 +331,7 @@ export default function ReportsTab({
           }
         });
       } else {
-        const desc = order.items.toLowerCase();
+        const desc = String(order.items || '').toLowerCase();
         let category = 'Acessórios';
         if (desc.includes('coifa')) category = 'Coifas & Sistemas';
         else if (desc.includes('duto') || desc.includes('curva') || desc.includes('tubo')) category = 'Dutos & Conexões';

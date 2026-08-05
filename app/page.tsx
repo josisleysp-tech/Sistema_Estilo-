@@ -588,7 +588,7 @@ export default function Page() {
       email: 'comercial@gerdau.com.br',
       phone: '(51) 3323-2000',
       address: 'Porto Alegre - RS',
-      segment: 'Siderurgia',
+      segment: 'Cliente Final',
       status: 'Ativo',
       totalPurchased: 85200
     },
@@ -599,7 +599,7 @@ export default function Page() {
       email: 'vendas@weg.net',
       phone: '(47) 3276-4000',
       address: 'Jaraguá do Sul - SC',
-      segment: 'Eletroeletrônica',
+      segment: 'Cliente Final',
       status: 'Ativo',
       totalPurchased: 42000
     },
@@ -610,7 +610,7 @@ export default function Page() {
       email: 'suprimentos@petrobras.com.br',
       phone: '(19) 3874-1000',
       address: 'Paulínia - SP',
-      segment: 'Petroquímico',
+      segment: 'Lojista',
       status: 'Ativo',
       totalPurchased: 125000
     },
@@ -621,7 +621,7 @@ export default function Page() {
       email: 'compras@klabin.com.br',
       phone: '(11) 3049-2000',
       address: 'Ortigueira - PR',
-      segment: 'Celulose / Papel',
+      segment: 'Cliente Final',
       status: 'Ativo',
       totalPurchased: 18900
     }
@@ -820,7 +820,7 @@ export default function Page() {
 
   // Industrial segments list state
   const [industrialSegments, setIndustrialSegments] = useState<string[]>([
-    "Metalurgia", "Siderurgia", "Automobilístico", "Celulose / Papel", "Petroquímico", "Eletroeletrônica", "Mineração", "Energia"
+    "Cliente Final", "Lojista", "Metalurgia", "Siderurgia", "Automobilístico", "Celulose / Papel", "Petroquímico", "Eletroeletrônica", "Mineração", "Energia"
   ]);
 
   // System parameters state
@@ -854,7 +854,18 @@ export default function Page() {
       setTimeout(() => {
         if (savedSegments) {
           try {
-            setIndustrialSegments(JSON.parse(savedSegments));
+            const parsed = JSON.parse(savedSegments);
+            if (Array.isArray(parsed)) {
+              const required = ["Cliente Final", "Lojista"];
+              const missing = required.filter(r => !parsed.some(p => p.toLowerCase() === r.toLowerCase()));
+              if (missing.length > 0) {
+                const merged = [...required, ...parsed.filter(p => !required.some(r => r.toLowerCase() === p.toLowerCase()))];
+                setIndustrialSegments(merged);
+                localStorage.setItem('industrial_segments', JSON.stringify(merged));
+              } else {
+                setIndustrialSegments(parsed);
+              }
+            }
           } catch (e) {
             // ignore
           }
@@ -987,21 +998,91 @@ export default function Page() {
         const localPurchaseOrders = localStorage.getItem('erpf_purchase_orders');
         const localManualTransactions = localStorage.getItem('erpf_manual_transactions');
         
-        if (localInventory) { try { setInventory(JSON.parse(localInventory)); } catch (e) {} }
-        if (localProduction) { try { setProductionOrders(JSON.parse(localProduction)); } catch (e) {} }
-        if (localSales) { try { setSalesOrders(JSON.parse(localSales)); } catch (e) {} }
-        if (localCustomers) { try { setCustomers(JSON.parse(localCustomers)); } catch (e) {} }
+        if (localInventory) {
+          try {
+            const parsed = JSON.parse(localInventory);
+            if (Array.isArray(parsed)) {
+              setInventory(parsed.map((item: any) => ({
+                ...item,
+                name: String(item?.name || 'Item Sem Nome'),
+                sku: String(item?.sku || 'SKU-TEMP'),
+                category: String(item?.category || 'Geral'),
+                stock: Number(item?.stock || 0)
+              })));
+            }
+          } catch (e) {}
+        }
+        if (localProduction) {
+          try {
+            const parsed = JSON.parse(localProduction);
+            if (Array.isArray(parsed)) {
+              setProductionOrders(parsed.map((op: any) => ({
+                ...op,
+                id: String(op?.id || `OP-${Date.now()}`),
+                product: String(op?.product || 'Produto N/A'),
+                supervisor: String(op?.supervisor || 'Não Definido')
+              })));
+            }
+          } catch (e) {}
+        }
+        if (localSales) {
+          try {
+            const parsed = JSON.parse(localSales);
+            if (Array.isArray(parsed)) {
+              setSalesOrders(parsed.map((so: any) => ({
+                ...so,
+                id: String(so?.id || `VD-${Date.now()}`),
+                client: String(so?.client || 'Cliente Não Informado'),
+                items: String(so?.items || ''),
+                status: so?.status || 'Orçamento'
+              })));
+            }
+          } catch (e) {}
+        }
+        if (localCustomers) {
+          try {
+            const parsed = JSON.parse(localCustomers);
+            if (Array.isArray(parsed)) {
+              setCustomers(parsed.map((c: any) => ({
+                ...c,
+                name: String(c?.name || 'Cliente Sem Nome'),
+                cnpj: String(c?.cnpj || ''),
+                email: String(c?.email || ''),
+                address: String(c?.address || '')
+              })));
+            }
+          } catch (e) {}
+        }
         if (localUsers) {
           try {
             const defaultNamesToFilter = ['Eduardo Fontes', 'Ana Paula', 'Carlos Eduardo', 'Fernanda Souza', 'Marcos Silva'];
             const parsed = JSON.parse(localUsers);
             if (Array.isArray(parsed)) {
-              setUsers(parsed.filter((u: any) => !defaultNamesToFilter.includes(u.name)));
+              setUsers(parsed.filter((u: any) => u && u.name && !defaultNamesToFilter.includes(u.name)));
             }
           } catch (e) {}
         }
-        if (localPurchaseOrders) { try { setPurchaseOrders(JSON.parse(localPurchaseOrders)); } catch (e) {} }
-        if (localManualTransactions) { try { setManualTransactions(JSON.parse(localManualTransactions)); } catch (e) {} }
+        if (localPurchaseOrders) {
+          try {
+            const parsed = JSON.parse(localPurchaseOrders);
+            if (Array.isArray(parsed)) {
+              setPurchaseOrders(parsed);
+            }
+          } catch (e) {}
+        }
+        if (localManualTransactions) {
+          try {
+            const parsed = JSON.parse(localManualTransactions);
+            if (Array.isArray(parsed)) {
+              setManualTransactions(parsed.map((tx: any) => ({
+                ...tx,
+                id: String(tx?.id || `FTX-${Date.now()}`),
+                description: String(tx?.description || 'Lançamento'),
+                amount: Number(tx?.amount || 0)
+              })));
+            }
+          } catch (e) {}
+        }
       };
 
       try {
@@ -1091,6 +1172,11 @@ export default function Page() {
                 boletoDueDate: so.boletoDueDate || so.boleto_due_date || undefined,
                 paidAmount: so.paidAmount ?? so.paid_amount ?? undefined,
                 boletoInstallments: so.boletoInstallments || so.boleto_installments || undefined,
+                clientSegment: so.clientSegment || so.client_segment || undefined,
+                commissionPercentage: so.commissionPercentage !== undefined && so.commissionPercentage !== null ? Number(so.commissionPercentage) : (so.commission_percentage !== undefined && so.commission_percentage !== null ? Number(so.commission_percentage) : undefined),
+                commissionValue: so.commissionValue !== undefined && so.commissionValue !== null ? Number(so.commissionValue) : (so.commission_value !== undefined && so.commission_value !== null ? Number(so.commission_value) : undefined),
+                commissionPaid: so.commissionPaid ?? so.commission_paid ?? false,
+                commissionPayoutId: so.commissionPayoutId || so.commission_payout_id || undefined,
               });
             });
             setSalesOrders(uniqueSalesOrders);
@@ -1172,6 +1258,8 @@ export default function Page() {
                   permissions: parsedPermissions,
                   allowedTabs: Array.isArray(parsedTabs) ? parsedTabs : [],
                   hideOrderValues: u.hideOrderValues ?? u.hide_order_values ?? false,
+                  commissionEligible: Boolean(u.commissionEligible ?? u.commission_eligible ?? false),
+                  commissionPercentage: Number(u.commissionPercentage ?? u.commission_percentage ?? 0),
                 };
               });
               setUsers(loadedUsers);
@@ -1440,11 +1528,16 @@ export default function Page() {
         });
         
         // Silently skip if server is temporarily restarting or gateway is waiting (502/503/504)
-        if (res.status >= 500 || res.status === 404) {
+        if (res.status >= 500 || res.status === 404 || !res.ok) {
           return;
         }
 
-        const result = await parseResponseJson(res);
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          return;
+        }
+
+        const result = await res.json();
         if (result.success && result.data) {
           const data = result.data;
           const current = stateRef.current;
@@ -1532,6 +1625,11 @@ export default function Page() {
                 boletoDueDate: so.boletoDueDate || so.boleto_due_date || undefined,
                 paidAmount: so.paidAmount ?? so.paid_amount ?? undefined,
                 boletoInstallments: so.boletoInstallments || so.boleto_installments || undefined,
+                clientSegment: so.clientSegment || so.client_segment || undefined,
+                commissionPercentage: so.commissionPercentage !== undefined && so.commissionPercentage !== null ? Number(so.commissionPercentage) : (so.commission_percentage !== undefined && so.commission_percentage !== null ? Number(so.commission_percentage) : undefined),
+                commissionValue: so.commissionValue !== undefined && so.commissionValue !== null ? Number(so.commissionValue) : (so.commission_value !== undefined && so.commission_value !== null ? Number(so.commission_value) : undefined),
+                commissionPaid: so.commissionPaid ?? so.commission_paid ?? false,
+                commissionPayoutId: so.commissionPayoutId || so.commission_payout_id || undefined,
               });
             });
 
@@ -1604,6 +1702,8 @@ export default function Page() {
                 permissions: parsedPermissions,
                 allowedTabs: Array.isArray(parsedTabs) ? parsedTabs : [],
                 hideOrderValues: u.hideOrderValues ?? u.hide_order_values ?? false,
+                commissionEligible: Boolean(u.commissionEligible ?? u.commission_eligible ?? false),
+                commissionPercentage: Number(u.commissionPercentage ?? u.commission_percentage ?? 0),
               };
             });
 
@@ -1653,7 +1753,7 @@ export default function Page() {
         if (isNetworkError) {
           console.warn('Sincronização temporariamente indisponível (servidor reconectando...).');
         } else {
-          console.error('Polling sync error:', err);
+          console.warn('Polling sync status warning:', err?.message || err);
         }
       }
     }, 8000); // Poll every 8 seconds for efficiency and low CPU overhead
@@ -2554,6 +2654,20 @@ export default function Page() {
     }));
   };
 
+  // Update collaborator's commission settings
+  const handleUpdateCommission = (name: string, eligible: boolean, percentage: number) => {
+    setUsers(prev => prev.map(u => {
+      if (u.name === name) {
+        return { 
+          ...u, 
+          commissionEligible: eligible,
+          commissionPercentage: percentage
+        };
+      }
+      return u;
+    }));
+  };
+
   // Select OP file for Technical drawings viewer tab
   const handleSelectOPForViewer = (op: ProductionOrder) => {
     setSelectedOPForViewer(op);
@@ -3230,6 +3344,7 @@ export default function Page() {
               onUpdateUserPin={handleUpdateUserPin}
               onUpdateAllowedTabs={handleUpdateAllowedTabs}
               onUpdateUserStatus={handleUpdateUserStatus}
+              onUpdateCommission={handleUpdateCommission}
             />
           )}
 

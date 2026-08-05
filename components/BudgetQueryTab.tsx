@@ -67,23 +67,23 @@ export default function BudgetQueryTab({
     return budgetsOnly.filter(order => {
       // 1. Client filter
       const matchesClient = clientSearch.trim() === '' || 
-        order.client.toLowerCase().includes(clientSearch.toLowerCase());
+        String(order.client || '').toLowerCase().includes(clientSearch.toLowerCase());
 
       // 2. Order number / ID filter
       const matchesId = orderIdSearch.trim() === '' || 
-        order.id.toLowerCase().includes(orderIdSearch.toLowerCase());
+        String(order.id || '').toLowerCase().includes(orderIdSearch.toLowerCase());
 
       // 3. Product filter
       const query = productSearch.toLowerCase().trim();
       let matchesProduct = query === '';
       if (query !== '') {
-        if (order.items && order.items.toLowerCase().includes(query)) {
+        if (order.items && String(order.items).toLowerCase().includes(query)) {
           matchesProduct = true;
         }
         if (order.products && order.products.length > 0) {
           const hasMatchingProduct = order.products.some(p => 
-            p.name.toLowerCase().includes(query) || 
-            p.sku.toLowerCase().includes(query)
+            String(p.name || '').toLowerCase().includes(query) || 
+            String(p.sku || '').toLowerCase().includes(query)
           );
           if (hasMatchingProduct) {
             matchesProduct = true;
@@ -269,7 +269,12 @@ export default function BudgetQueryTab({
                           <div className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Nº {order.serialNumber}</div>
                         )}
                       </td>
-                      <td className="px-5 py-4 font-semibold text-slate-800">{order.client}</td>
+                      <td className="px-5 py-4 font-semibold text-slate-800">
+                        <div>{order.client}</div>
+                        <span className="inline-flex items-center gap-1 bg-pink-50 text-pink-700 px-1.5 py-0.5 rounded text-[9px] font-bold mt-1">
+                          {order.clientSegment === 'Lojista' ? '🏪' : '🏢'} {order.clientSegment || 'Cliente Final'}
+                        </span>
+                      </td>
                       <td className="px-5 py-4 font-mono text-slate-500">
                         <span className="inline-flex items-center gap-1 bg-pink-50 text-pink-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
                           👤 {order.operator || 'Eduardo Fontes'}

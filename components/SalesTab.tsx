@@ -70,7 +70,7 @@ export default function SalesTab({
   onUpdatePaymentMethod,
   onGenerateOPsFromOrder,
   onAddCustomer,
-  industrialSegments = ["Metalurgia", "Siderurgia", "Automobilístico", "Celulose / Papel", "Petroquímico", "Eletroeletrônica", "Mineração", "Energia"],
+  industrialSegments = ["Cliente Final", "Lojista", "Metalurgia", "Siderurgia", "Automobilístico", "Celulose / Papel", "Petroquímico", "Eletroeletrônica", "Mineração", "Energia"],
   onUpdateSegments = () => {},
   systemParams
 }: SalesTabProps) {
@@ -97,7 +97,19 @@ export default function SalesTab({
   
   // New order form states
   const [newClient, setNewClient] = useState('');
+  const [clientSegment, setClientSegment] = useState<string>('Cliente Final');
   const [paymentMethod, setPaymentMethod] = useState('Boleto Bancário');
+  const [commissionPercent, setCommissionPercent] = useState<number>(0);
+
+  const handleSelectClient = (clientName: string) => {
+    setNewClient(clientName);
+    if (clientName) {
+      const cust = customers.find(c => String(c.name || '').toLowerCase() === clientName.toLowerCase());
+      if (cust && cust.segment) {
+        setClientSegment(cust.segment);
+      }
+    }
+  };
   const [deliveryDate, setDeliveryDate] = useState(() => {
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
@@ -186,7 +198,7 @@ export default function SalesTab({
   const [custEmail, setCustEmail] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [custAddress, setCustAddress] = useState('');
-  const [custSegment, setCustSegment] = useState('Metalurgia');
+  const [custSegment, setCustSegment] = useState('Cliente Final');
   const [isSegmentManagerOpen, setIsSegmentManagerOpen] = useState(false);
 
   const handleInlineAddCustomer = (e: React.FormEvent) => {
@@ -279,11 +291,12 @@ export default function SalesTab({
 
   // Filter orders
   const filteredOrders = useMemo(() => {
+    const searchLower = String(search || '').toLowerCase();
     return salesOrders.filter(order => {
-      const matchSearch = order.client.toLowerCase().includes(search.toLowerCase()) || 
-                          order.id.toLowerCase().includes(search.toLowerCase()) ||
-                          order.items.toLowerCase().includes(search.toLowerCase()) ||
-                          (order.paymentMethod && order.paymentMethod.toLowerCase().includes(search.toLowerCase()));
+      const matchSearch = String(order.client || '').toLowerCase().includes(searchLower) || 
+                          String(order.id || '').toLowerCase().includes(searchLower) ||
+                          String(order.items || '').toLowerCase().includes(searchLower) ||
+                          (order.paymentMethod && String(order.paymentMethod).toLowerCase().includes(searchLower));
       const matchStatus = statusFilter === 'Todos' || order.status === statusFilter;
       return matchSearch && matchStatus;
     });
@@ -530,6 +543,7 @@ export default function SalesTab({
 
     onAddSalesOrder({
       client: newClient,
+      clientSegment: clientSegment || 'Cliente Final',
       value: finalTotal,
       date: new Date().toISOString().split('T')[0],
       status: isBudget ? 'Orçamento' : 'Pendente',
@@ -540,6 +554,8 @@ export default function SalesTab({
       projectFiles,
       notes,
       discountPercentage: discountPercent,
+      commissionPercentage: commissionPercent,
+      commissionValue: parseFloat(((finalTotal * commissionPercent) / 100).toFixed(2)),
       products: selectedItems,
       creditUsed: !isBudget ? creditUsedInOrder : 0,
       creditGenerated: !isBudget ? surplusPayment : 0,
@@ -550,8 +566,10 @@ export default function SalesTab({
 
     // Reset form states
     setNewClient('');
+    setClientSegment('Cliente Final');
     setSelectedItems([]);
     setDiscountPercent(0);
+    setCommissionPercent(0);
     setPaymentMethod('Boleto Bancário');
     setPayment1Method('Boleto Bancário');
     setPayment1Amount(0);
@@ -665,21 +683,88 @@ export default function SalesTab({
                     </div>
                     <select 
                       value={newClient} 
-                      onChange={(e) => setNewClient(e.target.value)} 
+                      onChange={(e) => handleSelectClient(e.target.value)} 
                       required 
                       className="w-full text-xs border border-slate-200 px-3 py-2.5 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-semibold text-slate-700 cursor-pointer"
                     >
                       <option value="">Selecione um cliente homologado...</option>
                       {customers.filter(c => c.status === 'Ativo').map(c => (
                         <option key={c.id} value={c.name}>
-                          {c.name} {c.creditBalance && c.creditBalance > 0 ? ` [Crédito R$ ${c.creditBalance.toFixed(2)}]` : ''}
+                          {c.name} {c.segment ? `(${c.segment})` : ''} {c.creditBalance && c.creditBalance > 0 ? ` [Crédito R$ ${c.creditBalance.toFixed(2)}]` : ''}
                         </option>
                       ))}
                     </select>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Escolha do Tipo de Cliente (Cliente Final / Lojista) dentro do Pedido */}
+                <div className="bg-gradient-to-r from-indigo-50/70 to-slate-50 border border-indigo-100 p-3.5 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
+                      Classificação do Cliente no Pedido *
+                    </label>
+                    <span className="text-[9px] text-slate-500 font-semibold">Defina o enquadramento comercial deste lote</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setClientSegment('Cliente Final')}
+                      className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-extrabold transition-all border cursor-pointer ${
+                        clientSegment === 'Cliente Final'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-600/20'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50'
+                      }`}
+                    >
+                      <span className="text-sm">🏢</span>
+                      <span>Cliente Final</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setClientSegment('Lojista')}
+                      className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-extrabold transition-all border cursor-pointer ${
+                        clientSegment === 'Lojista'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-600/20'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50'
+                      }`}
+                    >
+                      <span className="text-sm">🏪</span>
+                      <span>Lojista</span>
+                    </button>
+
+                    <div className="col-span-2 sm:col-span-1">
+                      <select
+                        value={['Cliente Final', 'Lojista'].includes(clientSegment) ? '' : clientSegment}
+                        onChange={(e) => {
+                          if (e.target.value) setClientSegment(e.target.value);
+                        }}
+                        className={`w-full text-xs py-2.5 px-2.5 rounded-lg border font-bold focus:outline-none transition-all cursor-pointer h-full ${
+                          !['Cliente Final', 'Lojista'].includes(clientSegment) && clientSegment
+                            ? 'bg-indigo-600 text-white border-indigo-600 font-extrabold'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                        }`}
+                      >
+                        <option value="">Outros Segmentos...</option>
+                        {industrialSegments
+                          .filter(s => !['Cliente Final', 'Lojista'].includes(s))
+                          .map(seg => (
+                            <option key={seg} value={seg}>{seg}</option>
+                          ))
+                        }
+                      </select>
+                    </div>
+                  </div>
+                  {clientSegment && (
+                    <div className="text-[10px] text-slate-500 pt-0.5 flex items-center gap-1 font-medium">
+                      <span>Tipo selecionado para este pedido:</span>
+                      <strong className="text-indigo-700 font-bold bg-indigo-100/60 px-1.5 py-0.5 rounded">{clientSegment}</strong>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Expected Delivery Date */}
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Data Prevista para Entrega *</label>
@@ -714,6 +799,32 @@ export default function SalesTab({
                       />
                       <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">%</span>
                     </div>
+                  </div>
+
+                  {/* Commission (%) */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Comissão sobre Pedido (%)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        value={commissionPercent || ''} 
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setCommissionPercent(isNaN(val) ? 0 : Math.min(100, Math.max(0, val)));
+                        }} 
+                        placeholder="0"
+                        className="w-full text-xs px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono font-bold text-slate-700"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">%</span>
+                    </div>
+                    {commissionPercent > 0 && (
+                      <div className="text-[10px] text-emerald-600 font-bold mt-1">
+                        Valor da Comissão: R$ {((finalTotal * commissionPercent) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1704,7 +1815,12 @@ export default function SalesTab({
                           <div className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Nº {order.serialNumber}</div>
                         )}
                       </td>
-                      <td className="px-5 py-4 font-semibold text-slate-800">{order.client}</td>
+                      <td className="px-5 py-4 font-semibold text-slate-800">
+                        <div>{order.client}</div>
+                        <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] font-bold mt-1">
+                          {order.clientSegment === 'Lojista' ? '🏪' : '🏢'} {order.clientSegment || 'Cliente Final'}
+                        </span>
+                      </td>
                       <td className="px-5 py-4 font-mono text-slate-500">
                         <div className="flex flex-col gap-1">
                           <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-bold w-fit">

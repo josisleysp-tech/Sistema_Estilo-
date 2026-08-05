@@ -106,8 +106,8 @@ export default function InventoryTab({
   // Filter inventory
   const filteredInventory = useMemo(() => {
     return inventory.filter(item => {
-      const matchSearch = item.name.toLowerCase().includes(search.toLowerCase()) || 
-                          item.sku.toLowerCase().includes(search.toLowerCase());
+      const matchSearch = String(item.name || '').toLowerCase().includes(search.toLowerCase()) || 
+                          String(item.sku || '').toLowerCase().includes(search.toLowerCase());
       const matchCategory = categoryFilter === 'Todos' || item.category === categoryFilter;
       const matchActive = showInactive || item.active !== false;
       return matchSearch && matchCategory && matchActive;
@@ -174,9 +174,9 @@ export default function InventoryTab({
   const isItemInsumo = (item: InventoryItem) => {
     return (
       item.stages?.includes('INSUMO') ||
-      item.category.toLowerCase().includes('insumo') ||
-      item.category.toLowerCase().includes('massa corrente') ||
-      item.sku.startsWith('IN-')
+      String(item.category || '').toLowerCase().includes('insumo') ||
+      String(item.category || '').toLowerCase().includes('massa corrente') ||
+      String(item.sku || '').startsWith('IN-')
     );
   };
 

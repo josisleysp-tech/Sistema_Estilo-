@@ -53,6 +53,7 @@ export const projectFiles = pgTable("project_files", {
 export const salesOrders = pgTable("sales_orders", {
   id: text("id").primaryKey(),
   client: text("client").notNull(),
+  clientSegment: text("client_segment"),
   clientDocument: text("client_document"),
   date: text("date").notNull(),
   deliveryDate: text("delivery_date"),
@@ -72,6 +73,8 @@ export const salesOrders = pgTable("sales_orders", {
   boletoDueDate: text("boleto_due_date"),
   paidAmount: doublePrecision("paid_amount").default(0),
   boletoInstallments: jsonb("boleto_installments").$type<any[]>().default([]),
+  commissionPercentage: doublePrecision("commission_percentage").default(0),
+  commissionValue: doublePrecision("commission_value").default(0),
   commissionPaid: boolean("commission_paid").default(false),
   commissionPayoutId: text("commission_payout_id"),
   updatedAt: text("updated_at"),

@@ -55,7 +55,7 @@ export default function CustomerTab({
   onToggleCustomerStatus,
   onDeleteCustomer,
   onUpdateCustomer,
-  industrialSegments = ["Metalurgia", "Siderurgia", "Automobilístico", "Celulose / Papel", "Petroquímico", "Eletroeletrônica", "Mineração", "Energia"],
+  industrialSegments = ["Cliente Final", "Lojista", "Metalurgia", "Siderurgia", "Automobilístico", "Celulose / Papel", "Petroquímico", "Eletroeletrônica", "Mineração", "Energia"],
   onUpdateSegments = () => {},
   currentUser,
   users = []
@@ -73,7 +73,7 @@ export default function CustomerTab({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [segment, setSegment] = useState('Metalurgia');
+  const [segment, setSegment] = useState('Cliente Final');
   const [isSegmentManagerOpen, setIsSegmentManagerOpen] = useState(false);
 
   // Credit Modal & History states
@@ -319,12 +319,14 @@ export default function CustomerTab({
 
   // Filter customers
   const filteredCustomers = useMemo(() => {
+    const searchLower = String(search || '').toLowerCase();
+    const cleanSearchDigits = String(search || '').replace(/\D/g, '');
     return customers.filter(c => {
-      const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
-                            (c.nickname && c.nickname.toLowerCase().includes(search.toLowerCase())) ||
-                            c.cnpj.replace(/\D/g, '').includes(search.replace(/\D/g, '')) ||
-                            c.email.toLowerCase().includes(search.toLowerCase()) ||
-                            c.address.toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = String(c.name || '').toLowerCase().includes(searchLower) ||
+                            (c.nickname && String(c.nickname).toLowerCase().includes(searchLower)) ||
+                            (c.cnpj && String(c.cnpj).replace(/\D/g, '').includes(cleanSearchDigits)) ||
+                            String(c.email || '').toLowerCase().includes(searchLower) ||
+                            String(c.address || '').toLowerCase().includes(searchLower);
       
       const matchesStatus = statusFilter === 'Todos' || c.status === statusFilter;
       const matchesSegment = segmentFilter === 'Todos' || c.segment === segmentFilter;

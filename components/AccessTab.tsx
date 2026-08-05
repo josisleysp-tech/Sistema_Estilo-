@@ -61,8 +61,11 @@ export default function AccessTab({
   onUpdateUserStatus,
   onUpdateCommission
 }: AccessTabProps) {
-  const [selectedUser, setSelectedUser] = useState<UserAccess | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+
+  // Derive selectedUser directly from users prop to guarantee freshness
+  const selectedUser = users.find(u => u.name === selectedUserName) || null;
 
   const filteredUsers = users.filter(user => showInactive || user.status !== 'Inativo');
 
@@ -177,13 +180,6 @@ export default function AccessTab({
       }
     };
 
-    // Update local state
-    const updatedUser = {
-      ...selectedUser,
-      permissions: updatedPermissions
-    };
-    setSelectedUser(updatedUser);
-
     // Bubble up to parent
     onUpdatePermissions(selectedUser.name, updatedPermissions);
   };
@@ -191,12 +187,6 @@ export default function AccessTab({
   const handleToggleScheduleRestriction = () => {
     if (!selectedUser) return;
     const nextVal = !selectedUser.restrictToWorkHours;
-    
-    const updatedUser = {
-      ...selectedUser,
-      restrictToWorkHours: nextVal
-    };
-    setSelectedUser(updatedUser);
 
     onUpdateSchedule(
       selectedUser.name, 
@@ -211,13 +201,6 @@ export default function AccessTab({
 
     const start = type === 'start' ? value : selectedUser.accessWindowStart;
     const end = type === 'end' ? value : selectedUser.accessWindowEnd;
-
-    const updatedUser = {
-      ...selectedUser,
-      accessWindowStart: start,
-      accessWindowEnd: end
-    };
-    setSelectedUser(updatedUser);
 
     onUpdateSchedule(selectedUser.name, selectedUser.restrictToWorkHours, start, end);
   };
@@ -282,7 +265,7 @@ export default function AccessTab({
                         className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${
                           isSelected ? 'bg-indigo-50/30 font-medium' : ''
                         }`}
-                        onClick={() => setSelectedUser(user)}
+                        onClick={() => setSelectedUserName(user.name)}
                       >
                         <td className="px-5 py-4">
                           <div>
@@ -309,7 +292,7 @@ export default function AccessTab({
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-3">
                             <button 
-                              onClick={(e) => { e.stopPropagation(); setSelectedUser(user); }}
+                              onClick={(e) => { e.stopPropagation(); setSelectedUserName(user.name); }}
                               className="text-xs text-indigo-600 hover:text-indigo-800 font-bold"
                             >
                               Configurar Matriz
@@ -321,8 +304,8 @@ export default function AccessTab({
                                   e.stopPropagation();
                                   if (confirm(`Tem certeza que deseja excluir o colaborador "${user.name}"?`)) {
                                     onDeleteUser(user.name);
-                                    if (selectedUser?.name === user.name) {
-                                      setSelectedUser(null);
+                                    if (selectedUserName === user.name) {
+                                      setSelectedUserName(null);
                                     }
                                   }
                                 }}
@@ -385,11 +368,6 @@ export default function AccessTab({
                   value={selectedUser.pin || ''}
                   onChange={(e) => {
                     const nextPin = e.target.value.replace(/\D/g, '');
-                    const updatedUser = {
-                      ...selectedUser,
-                      pin: nextPin
-                    };
-                    setSelectedUser(updatedUser);
                     onUpdateUserPin?.(selectedUser.name, nextPin);
                   }}
                   className="w-full text-xs font-mono font-bold text-indigo-600 bg-white border border-indigo-200 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
@@ -407,11 +385,6 @@ export default function AccessTab({
                   value={selectedUser.status}
                   onChange={(e) => {
                     const nextStatus = e.target.value as 'Ativo' | 'Ausente' | 'Inativo';
-                    const updatedUser = {
-                      ...selectedUser,
-                      status: nextStatus
-                    };
-                    setSelectedUser(updatedUser);
                     onUpdateUserStatus?.(selectedUser.name, nextStatus);
                   }}
                   className="w-full text-xs font-semibold text-slate-700 bg-white border border-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm cursor-pointer"
@@ -485,11 +458,6 @@ export default function AccessTab({
                   onClick={() => {
                     if (!selectedUser) return;
                     const nextVal = !selectedUser.hideOrderValues;
-                    const updatedUser = {
-                      ...selectedUser,
-                      hideOrderValues: nextVal
-                    };
-                    setSelectedUser(updatedUser);
                     onUpdateHideOrderValues?.(selectedUser.name, nextVal);
                   }}
                   className="text-rose-600 hover:text-rose-800 transition-colors flex-shrink-0"
@@ -520,13 +488,7 @@ export default function AccessTab({
                     onClick={() => {
                       if (!selectedUser) return;
                       const nextEligible = !selectedUser.commissionEligible;
-                      const currentPct = selectedUser.commissionPercentage || 5;
-                      const updatedUser = {
-                        ...selectedUser,
-                        commissionEligible: nextEligible,
-                        commissionPercentage: currentPct
-                      };
-                      setSelectedUser(updatedUser);
+                      const currentPct = selectedUser.commissionPercentage !== undefined ? selectedUser.commissionPercentage : 5;
                       onUpdateCommission?.(selectedUser.name, nextEligible, currentPct);
                     }}
                     className="text-emerald-600 hover:text-emerald-800 transition-colors flex-shrink-0"
@@ -552,14 +514,9 @@ export default function AccessTab({
                           step="0.1"
                           min="0"
                           max="100"
-                          value={selectedUser.commissionPercentage || 0}
+                          value={selectedUser.commissionPercentage !== undefined ? selectedUser.commissionPercentage : ''}
                           onChange={(e) => {
-                            const val = Math.max(0, Number(e.target.value));
-                            const updatedUser = {
-                              ...selectedUser,
-                              commissionPercentage: val
-                            };
-                            setSelectedUser(updatedUser);
+                            const val = e.target.value === '' ? 0 : Math.max(0, Number(e.target.value));
                             onUpdateCommission?.(selectedUser.name, true, val);
                           }}
                           className="w-24 text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono font-bold text-emerald-800 bg-white"
@@ -595,11 +552,6 @@ export default function AccessTab({
                           } else {
                             nextAllowed = [...currentAllowed, tab];
                           }
-                          const updatedUser = {
-                            ...selectedUser,
-                            allowedTabs: nextAllowed
-                          };
-                          setSelectedUser(updatedUser);
                           onUpdateAllowedTabs?.(selectedUser.name, nextAllowed);
                         }}
                         className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[10px] font-bold transition-all text-left truncate cursor-pointer ${

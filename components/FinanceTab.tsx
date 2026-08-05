@@ -154,50 +154,77 @@ export default function FinanceTab({
   const [selectedCollabPayout, setSelectedCollabPayout] = useState<any | null>(null);
   const [payoutNotes, setPayoutNotes] = useState<string>('');
 
-  // Collaborators Commissions calculation (Apenas Cliente Final)
+  // Collaborators Commissions calculation
   const commissionSummary = useMemo(() => {
     if (!collaborators || collaborators.length === 0) {
       return { eligibleCollabs: [], totalPendingValue: 0, totalPendingOrdersCount: 0 };
     }
 
-    let totalPendingValue = 0;
-    let totalPendingOrdersCount = 0;
+    const matchOperator = (op: string | undefined, collabName: string) => {
+      if (!op || !collabName) return false;
+      return String(op).trim().toLowerCase() === String(collabName).trim().toLowerCase();
+    };
 
+    const isEligibleOrder = (so: SalesOrder) => {
+      if (!so || so.status === 'Orçamento' || so.status === 'Cancelado') return false;
+      if (so.commissionPaid) return false;
+
+      // Explicit commission set on order
+      if ((so.commissionPercentage !== undefined && so.commissionPercentage !== null && so.commissionPercentage > 0) || (so.commissionValue !== undefined && so.commissionValue !== null && so.commissionValue > 0)) {
+        return true;
+      }
+
+      // Check clientSegment or customer segment - exclude ONLY if explicitly Lojista or Revenda
+      if (so.clientSegment) {
+        const segLower = String(so.clientSegment).toLowerCase();
+        if (segLower.includes('lojista') || segLower.includes('revenda')) return false;
+      }
+
+      const clientStr = String(so.client || '').trim().toLowerCase();
+      const cust = customers.find(c => {
+        const cName = String(c?.name || '').trim().toLowerCase();
+        const cNick = String(c?.nickname || '').trim().toLowerCase();
+        return (cName && clientStr && cName === clientStr) || (cNick && clientStr && cNick === clientStr);
+      });
+
+      if (cust && cust.segment) {
+        const custSegLower = String(cust.segment).toLowerCase();
+        if (custSegLower.includes('lojista') || custSegLower.includes('revenda')) return false;
+      }
+
+      const clientLower = String(so.client || '').toLowerCase();
+      if (clientLower.includes('lojista') || clientLower.includes('revenda')) return false;
+
+      return true;
+    };
+
+    // Group sales orders by collaborator / operator
     const eligibleCollabs = collaborators
-      .filter(c => c.commissionEligible && (c.commissionPercentage || 0) > 0)
+      .filter(c => {
+        if (c.commissionEligible || (c.commissionPercentage || 0) > 0) return true;
+        // Also include collaborator if they are operator on any eligible sales order
+        return salesOrders.some(so => (matchOperator(so.operator, c.name) || matchOperator(so.lastOperator, c.name)) && isEligibleOrder(so));
+      })
       .map(collab => {
         const pct = collab.commissionPercentage || 0;
 
-        // Find non-cancelled orders for "Cliente Final" handled by this collaborator where commission hasn't been paid
+        // Find non-cancelled, non-paid eligible orders for this collaborator
         const eligibleOrders = salesOrders.filter(so => {
-          if (so.status === 'Orçamento' || so.status === 'Cancelado') return false;
-          if (so.commissionPaid) return false;
-
-          // Check if operator matches
-          const isOperator = so.operator === collab.name || so.lastOperator === collab.name;
-          if (!isOperator) return false;
-
-          // Check if customer is "Cliente Final" (strictly exclude "Lojista")
-          const cust = customers.find(c =>
-            c.name.trim().toLowerCase() === so.client.trim().toLowerCase() ||
-            (c.nickname && c.nickname.trim().toLowerCase() === so.client.trim().toLowerCase())
-          );
-
-          if (cust) {
-            return cust.segment === 'Cliente Final' || cust.segment?.toLowerCase().includes('final');
-          }
-
-          // Fallback if customer not in table: exclude if client name contains 'Lojista' or 'Revenda'
-          const clientLower = so.client.toLowerCase();
-          return !clientLower.includes('lojista') && !clientLower.includes('revenda');
+          if (!isEligibleOrder(so)) return false;
+          return matchOperator(so.operator, collab.name) || matchOperator(so.lastOperator, collab.name);
         });
 
         const pendingOrdersCount = eligibleOrders.length;
         const totalSalesAmount = eligibleOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-        const commissionAmount = (totalSalesAmount * pct) / 100;
-
-        totalPendingValue += commissionAmount;
-        totalPendingOrdersCount += pendingOrdersCount;
+        const commissionAmount = eligibleOrders.reduce((sum, o) => {
+          if (o.commissionValue && o.commissionValue > 0) {
+            return sum + o.commissionValue;
+          }
+          const orderPct = (o.commissionPercentage !== undefined && o.commissionPercentage !== null && o.commissionPercentage > 0)
+            ? o.commissionPercentage
+            : pct;
+          return sum + ((o.value || 0) * orderPct) / 100;
+        }, 0);
 
         return {
           collaborator: collab,
@@ -207,6 +234,42 @@ export default function FinanceTab({
           commissionAmount
         };
       });
+
+    // Handle any eligible orders that have an operator not in collaborators list or unassigned
+    const processedOrderIds = new Set(eligibleCollabs.flatMap(item => item.eligibleOrders.map(o => o.id)));
+    const unassignedEligibleOrders = salesOrders.filter(so => !processedOrderIds.has(so.id) && isEligibleOrder(so));
+
+    if (unassignedEligibleOrders.length > 0) {
+      const pendingOrdersCount = unassignedEligibleOrders.length;
+      const totalSalesAmount = unassignedEligibleOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+      const commissionAmount = unassignedEligibleOrders.reduce((sum, o) => {
+        if (o.commissionValue && o.commissionValue > 0) {
+          return sum + o.commissionValue;
+        }
+        const orderPct = (o.commissionPercentage !== undefined && o.commissionPercentage !== null && o.commissionPercentage > 0)
+          ? o.commissionPercentage
+          : 0;
+        return sum + ((o.value || 0) * orderPct) / 100;
+      }, 0);
+
+      eligibleCollabs.push({
+        collaborator: {
+          name: 'Outros Operadores / Geral',
+          role: 'Vendedor Operacional',
+          email: 'vendas@estilocoifas.com.br',
+          commissionPercentage: 0,
+          commissionEligible: true,
+          status: 'Ativo'
+        } as any,
+        eligibleOrders: unassignedEligibleOrders,
+        pendingOrdersCount,
+        totalSalesAmount,
+        commissionAmount
+      });
+    }
+
+    const totalPendingValue = eligibleCollabs.reduce((sum, item) => sum + item.commissionAmount, 0);
+    const totalPendingOrdersCount = eligibleCollabs.reduce((sum, item) => sum + item.pendingOrdersCount, 0);
 
     return {
       eligibleCollabs,
@@ -461,11 +524,12 @@ export default function FinanceTab({
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
+    const searchLower = String(searchTerm || '').toLowerCase();
     return periodFilteredTransactions.filter(tx => {
       const matchSearch =
-        tx.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tx.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (tx.clientOrSupplier && tx.clientOrSupplier.toLowerCase().includes(searchTerm.toLowerCase()));
+        String(tx.description || '').toLowerCase().includes(searchLower) ||
+        String(tx.id || '').toLowerCase().includes(searchLower) ||
+        (tx.clientOrSupplier && String(tx.clientOrSupplier).toLowerCase().includes(searchLower));
 
       const matchType = typeFilter === 'TODOS' || tx.type === typeFilter;
       const matchStatus = statusFilter === 'TODOS' || tx.status === statusFilter;
