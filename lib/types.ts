@@ -227,4 +227,84 @@ export interface FinancialTransaction {
   updatedAt?: string;
 }
 
+export interface CrmInteraction {
+  id: string;
+  timestamp: string;
+  user: string;
+  channel: 'WhatsApp' | 'Telefone' | 'E-mail' | 'Reunião' | 'Mensagem';
+  type: 'Enviada' | 'Recebida' | 'Nota Interna';
+  notes: string;
+}
+
+export interface CrmLead {
+  id: string;
+  name: string;
+  company: string;
+  phone: string; // WhatsApp phone number
+  email: string;
+  segment: string;
+  estimatedValue: number;
+  stage: 'Novo Lead' | 'Qualificação' | 'Proposta Enviada' | 'Em Negociação' | 'Fechado (Ganho)' | 'Perdido';
+  priority: 'Baixa' | 'Média' | 'Alta';
+  assignedTo: string;
+  notes?: string;
+  createdAt: string;
+  lastContactDate: string;
+  nextFollowUpDate?: string;
+  convertedCustomerId?: string;
+  operator?: string;
+  updatedAt?: string;
+  history?: CrmInteraction[];
+}
+
+export interface WhatsAppMessageTemplate {
+  id: string;
+  title: string;
+  category: 'Orçamento' | 'Status de Pedido' | 'Primeiro Contato' | 'Cobrança' | 'Personalizado';
+  content: string;
+}
+
+export interface WhatsAppConfig {
+  companyNumber: string;
+  instanceName: string;
+  apiKey: string;
+  serverUrl: string;
+  isConnected: boolean;
+  autoSendOrderUpdates: boolean;
+}
+
+export interface WhatsAppMessageLog {
+  id: string;
+  timestamp: string;
+  recipientName: string;
+  phone: string;
+  message: string;
+  direction: 'ENTRADA' | 'SAIDA';
+  status: 'ENTREGUE' | 'LIDO' | 'ENVIADO' | 'FALHA';
+  latencyMs?: number;
+  leadId?: string;
+}
+
+export interface WhatsAppChatMessage {
+  id: string;
+  sender: 'company' | 'customer';
+  text: string;
+  timestamp: string;
+  status?: 'ENTREGUE' | 'LIDO' | 'ENVIADO';
+}
+
+export interface WhatsAppThread {
+  id: string;
+  leadId?: string;
+  contactName: string;
+  phone: string;
+  company?: string;
+  unreadCount: number;
+  lastMessage: string;
+  lastMessageTime: string;
+  status: 'ONLINE' | 'AGUARDANDO_RESPOSTA' | 'ATENDIDO';
+  avatarColor?: string;
+  messages: WhatsAppChatMessage[];
+}
+
 

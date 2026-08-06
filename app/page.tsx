@@ -28,7 +28,8 @@ import {
   LogIn,
   Fingerprint,
   KeyRound,
-  Settings
+  Settings,
+  MessageSquare
 } from 'lucide-react';
 
 // Import Types
@@ -42,7 +43,9 @@ import {
   Customer,
   Supplier,
   FinancialTransaction,
-  CommissionPayout
+  CommissionPayout,
+  CrmLead,
+  WhatsAppConfig
 } from '../lib/types';
 
 import { getDeliveryAlertStatus } from '../lib/utils';
@@ -63,6 +66,7 @@ import OrderQueryTab from '../components/OrderQueryTab';
 import BudgetQueryTab from '../components/BudgetQueryTab';
 import ParametersTab from '../components/ParametersTab';
 import FinanceTab from '../components/FinanceTab';
+import CrmTab from '../components/CrmTab';
 
 // Auxiliar para tratar respostas do servidor e evitar erros de parsing de HTML como JSON no Vercel (ex: 504 Timeout ou 500 Erro)
 async function parseResponseJson(res: Response) {
@@ -230,7 +234,7 @@ const DEFAULT_ADMIN_USER: UserAccess = {
     settings: { view: true, edit: true, del: true }
   },
   allowedTabs: [
-    'Painel Geral', 'Vendas', 'Consulta de Pedidos', 'Consulta de Orçamentos',
+    'Painel Geral', 'CRM & WhatsApp', 'Vendas', 'Consulta de Pedidos', 'Consulta de Orçamentos',
     'Cadastro de Clientes', 'Cadastro de Fornecedores', 'Cadastro de Produtos', 'Controle de Estoque',
     'Produção', 'Gestão de Acessos', 'Parâmetros', 'Relatórios',
     'Ordens de Compra', 'Financeiro', 'Ficha do Fornecedor', 'Visualizador OP'
@@ -511,6 +515,7 @@ export default function Page() {
 
   const menuItems = useMemo(() => [
     { label: 'Painel Geral', icon: Sliders },
+    { label: 'CRM & WhatsApp', icon: MessageSquare },
     { label: 'Vendas', icon: ShoppingBag },
     { label: 'Consulta de Pedidos', icon: Search },
     { label: 'Consulta de Orçamentos', icon: FileText },
@@ -537,7 +542,12 @@ export default function Page() {
 
     // Enforce tab-level allowedTabs if configured
     if (user.allowedTabs) {
-      return user.allowedTabs.includes(tab);
+      if (user.allowedTabs.includes(tab)) return true;
+      // Fallback for CRM & WhatsApp if allowedTabs was saved before CRM tab was added
+      if (tab === 'CRM & WhatsApp') {
+        return !!(user.permissions?.customers?.view || user.permissions?.sales?.view);
+      }
+      return false;
     }
 
     switch (tab) {
@@ -548,13 +558,15 @@ export default function Page() {
           user.permissions?.production?.view ||
           user.permissions?.customers?.view
         );
+      case 'CRM & WhatsApp':
+        return !!(user.permissions?.customers?.view || user.permissions?.sales?.view);
+      case 'Cadastro de Clientes':
+        return !!user.permissions?.customers?.view;
       case 'Vendas':
       case 'Consulta de Pedidos':
       case 'Consulta de Orçamentos':
       case 'Relatórios':
         return !!user.permissions?.sales?.view;
-      case 'Cadastro de Clientes':
-        return !!user.permissions?.customers?.view;
       case 'Cadastro de Fornecedores':
       case 'Ficha do Fornecedor':
       case 'Cadastro de Produtos':
@@ -822,6 +834,77 @@ export default function Page() {
   const [industrialSegments, setIndustrialSegments] = useState<string[]>([
     "Cliente Final", "Lojista", "Metalurgia", "Siderurgia", "Automobilístico", "Celulose / Papel", "Petroquímico", "Eletroeletrônica", "Mineração", "Energia"
   ]);
+
+  // CRM Leads State
+  const [leads, setLeads] = useState<CrmLead[]>([
+    {
+      id: 'LEAD-001',
+      name: 'Roberto Madero',
+      company: 'Madero Gastronomia S.A.',
+      phone: '(11) 99876-5432',
+      email: 'roberto@madero.com.br',
+      segment: 'Restaurante / Gastronomia',
+      estimatedValue: 48500,
+      stage: 'Em Negociação',
+      priority: 'Alta',
+      assignedTo: 'Eduardo Fontes',
+      notes: 'Projeto de exaustão industrial de alta vazão para cozinha comercial.',
+      createdAt: '2026-06-15',
+      lastContactDate: '2026-06-25',
+      history: [
+        {
+          id: 'INT-1',
+          timestamp: '2026-06-15 10:30',
+          user: 'Eduardo Fontes',
+          channel: 'WhatsApp',
+          type: 'Enviada',
+          notes: 'Enviado orçamento prévio de coifa centro em inox 304.'
+        }
+      ]
+    },
+    {
+      id: 'LEAD-002',
+      name: 'Eng. Fernando Mendes',
+      company: 'Galpão Logístico DHL',
+      phone: '(11) 98765-4321',
+      email: 'fernando.mendes@dhl.com',
+      segment: 'Metalurgia',
+      estimatedValue: 92000,
+      stage: 'Proposta Enviada',
+      priority: 'Alta',
+      assignedTo: 'Eduardo Fontes',
+      notes: 'Sistema de ventilação e renovação de ar para galpão industrial.',
+      createdAt: '2026-06-18',
+      lastContactDate: '2026-06-24',
+      history: []
+    },
+    {
+      id: 'LEAD-003',
+      name: 'Carla Silveira',
+      company: 'Shopping Center Norte',
+      phone: '(11) 97654-3210',
+      email: 'carla.silveira@centrenorte.com.br',
+      segment: 'Cliente Final',
+      estimatedValue: 35000,
+      stage: 'Qualificação',
+      priority: 'Média',
+      assignedTo: 'Ana Paula',
+      notes: 'Aguardando envio das plantas técnicas de exaustão.',
+      createdAt: '2026-06-20',
+      lastContactDate: '2026-06-22',
+      history: []
+    }
+  ]);
+
+  // WhatsApp Gateway Config State
+  const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfig>({
+    companyNumber: '(11) 99876-5432',
+    instanceName: 'estilocoifas_prod',
+    apiKey: 'api_key_estilo_coifas_prod_2026',
+    serverUrl: 'https://api.z-api.io/instances/estilocoifas',
+    isConnected: true,
+    autoSendOrderUpdates: true
+  });
 
   // System parameters state
   const [systemParams, setSystemParams] = useState({
@@ -2069,6 +2152,69 @@ export default function Page() {
     }));
   };
 
+  // CRM Lead Handlers
+  const handleAddLead = (newLead: Omit<CrmLead, 'id' | 'createdAt'>) => {
+    const nextId = `LEAD-${String(leads.length + 1).padStart(3, '0')}`;
+    const lead: CrmLead = {
+      ...newLead,
+      id: nextId,
+      createdAt: new Date().toISOString().split('T')[0],
+      operator: currentUser?.name || 'Sistema'
+    };
+    setLeads(prev => {
+      const updated = [lead, ...prev];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('erpf_leads', JSON.stringify(updated));
+      }
+      return updated;
+    });
+    setSyncMessage({ type: 'success', text: `Lead "${lead.name}" cadastrado com sucesso!` });
+  };
+
+  const handleUpdateLead = (id: string, updatedFields: Partial<CrmLead>) => {
+    setLeads(prev => {
+      const updated = prev.map(l => l.id === id ? { ...l, ...updatedFields, operator: currentUser?.name } : l);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('erpf_leads', JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
+  const handleDeleteLead = (id: string) => {
+    setLeads(prev => {
+      const updated = prev.filter(l => l.id !== id);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('erpf_leads', JSON.stringify(updated));
+      }
+      return updated;
+    });
+    setSyncMessage({ type: 'info', text: 'Lead excluído do CRM.' });
+  };
+
+  const handleConvertLeadToCustomer = (lead: CrmLead) => {
+    handleAddCustomer({
+      name: lead.name,
+      nickname: lead.company,
+      cnpj: '',
+      email: lead.email,
+      phone: lead.phone,
+      address: 'Endereço a cadastrar',
+      segment: lead.segment,
+      status: 'Ativo'
+    });
+    handleUpdateLead(lead.id, { stage: 'Fechado (Ganho)' });
+    setSyncMessage({ type: 'success', text: `Lead "${lead.name}" convertido em Cliente no ERP!` });
+  };
+
+  const handleUpdateWhatsAppConfig = (config: WhatsAppConfig) => {
+    setWhatsappConfig(config);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('erpf_waconfig', JSON.stringify(config));
+    }
+    setSyncMessage({ type: 'success', text: 'Configurações de WhatsApp salvas!' });
+  };
+
   // 7. Product Registry Mutators
   const handleAddProduct = (product: Omit<InventoryItem, 'stock' | 'image'> & { stock?: number }) => {
     setInventory(prev => [
@@ -3228,6 +3374,23 @@ export default function Page() {
               onOpenUpdateStock={() => { setActiveTab('Controle de Estoque'); setIsUpdateStockModalOpen(true); }}
               hideOrderValues={currentUser?.hideOrderValues}
               alertRiskDays={systemParams.alertRiskDays}
+            />
+          )}
+
+          {effectiveActiveTab === 'CRM & WhatsApp' && (
+            <CrmTab 
+              leads={leads}
+              customers={customers}
+              salesOrders={salesOrders}
+              onAddLead={handleAddLead}
+              onUpdateLead={handleUpdateLead}
+              onDeleteLead={handleDeleteLead}
+              onConvertLeadToCustomer={handleConvertLeadToCustomer}
+              industrialSegments={industrialSegments}
+              currentUser={currentUser}
+              users={users}
+              whatsappConfig={whatsappConfig}
+              onUpdateWhatsAppConfig={handleUpdateWhatsAppConfig}
             />
           )}
 

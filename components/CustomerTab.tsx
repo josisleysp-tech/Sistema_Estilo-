@@ -26,7 +26,8 @@ import {
   CheckCircle2,
   FileText,
   Printer,
-  ShoppingCart
+  ShoppingCart,
+  MessageSquare
 } from 'lucide-react';
 import { Customer, CustomerCreditRecord, SalesOrder, UserAccess } from '../lib/types';
 import SegmentManagerModal from './SegmentManagerModal';
@@ -761,9 +762,21 @@ export default function CustomerTab({
                         <Mail className="w-3 h-3 text-slate-400" />
                         <span>{customer.email}</span>
                       </div>
-                      <div className="flex items-center gap-1 text-slate-500 text-[11px]">
+                      <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
                         <Phone className="w-3 h-3 text-slate-400" />
-                        <span>{customer.phone}</span>
+                        <span className="font-mono">{customer.phone}</span>
+                        {customer.phone && customer.phone !== 'Não informado' && customer.phone !== '(00) 0000-0000' && (
+                          <a
+                            href={`https://wa.me/55${customer.phone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md transition-colors inline-flex items-center gap-1 text-[10px] font-bold"
+                            title="Conversar no WhatsApp"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            <span>WhatsApp</span>
+                          </a>
+                        )}
                       </div>
                     </td>
                     <td className="px-5 py-4">

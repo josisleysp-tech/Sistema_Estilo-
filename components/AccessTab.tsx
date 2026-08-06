@@ -20,10 +20,12 @@ import { UserAccess, PermissionMatrix } from '../lib/types';
 
 const ALL_TABS = [
   'Painel Geral',
+  'CRM & WhatsApp',
   'Vendas',
   'Consulta de Pedidos',
   'Consulta de Orçamentos',
   'Cadastro de Clientes',
+  'Cadastro de Fornecedores',
   'Cadastro de Produtos',
   'Controle de Estoque',
   'Produção',
@@ -89,10 +91,12 @@ export default function AccessTab({
   // Allowed tabs for the new collaborator
   const [newCollabAllowedTabs, setNewCollabAllowedTabs] = useState<string[]>([
     'Painel Geral',
+    'CRM & WhatsApp',
     'Vendas',
     'Consulta de Pedidos',
     'Consulta de Orçamentos',
     'Cadastro de Clientes',
+    'Cadastro de Fornecedores',
     'Cadastro de Produtos',
     'Controle de Estoque',
     'Produção',
@@ -149,10 +153,12 @@ export default function AccessTab({
     setAllowCustomers(true);
     setNewCollabAllowedTabs([
       'Painel Geral',
+      'CRM & WhatsApp',
       'Vendas',
       'Consulta de Pedidos',
       'Consulta de Orçamentos',
       'Cadastro de Clientes',
+      'Cadastro de Fornecedores',
       'Cadastro de Produtos',
       'Controle de Estoque',
       'Produção',
