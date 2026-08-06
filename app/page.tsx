@@ -536,6 +536,9 @@ export default function Page() {
   // Helper function to dynamically check if the simulated user can access a tab
   const checkTabPermission = (user: UserAccess, tab: string): boolean => {
     if (!user) return true;
+    // CRM & WhatsApp module is a core feature accessible to all users
+    if (tab === 'CRM & WhatsApp') return true;
+
     // Admin has full permissions
     if (user.role === 'Diretor de Operações' || user.role === 'Administrador' || user.name === 'Eduardo Fontes') return true;
     if (users.length === 0) return true;
@@ -543,10 +546,6 @@ export default function Page() {
     // Enforce tab-level allowedTabs if configured
     if (user.allowedTabs) {
       if (user.allowedTabs.includes(tab)) return true;
-      // Fallback for CRM & WhatsApp if allowedTabs was saved before CRM tab was added
-      if (tab === 'CRM & WhatsApp') {
-        return !!(user.permissions?.customers?.view || user.permissions?.sales?.view);
-      }
       return false;
     }
 
@@ -1072,6 +1071,7 @@ export default function Page() {
   // Load data from Supabase or localStorage on mount
   React.useEffect(() => {
     async function loadSupabaseData() {
+      if (typeof window === 'undefined') return;
       const loadLocalStorageFallback = () => {
         const localInventory = localStorage.getItem('erpf_inventory');
         const localProduction = localStorage.getItem('erpf_production_orders');
