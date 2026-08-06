@@ -23,7 +23,15 @@ import {
   Tag,
   Download,
   CreditCard,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ChevronDown,
+  ChevronUp,
+  Printer,
+  FileText,
+  Eye,
+  ListFilter,
+  Percent,
+  ShoppingBag
 } from 'lucide-react';
 import { FinancialTransaction, SalesOrder, PurchaseOrder, Customer, UserAccess, CommissionPayout } from '../lib/types';
 
@@ -154,10 +162,68 @@ export default function FinanceTab({
   const [selectedCollabPayout, setSelectedCollabPayout] = useState<any | null>(null);
   const [payoutNotes, setPayoutNotes] = useState<string>('');
 
+  // Filter states for Commission Reports
+  const [commCollabFilter, setCommCollabFilter] = useState<string>('TODOS');
+  const [commPeriodPreset, setCommPeriodPreset] = useState<'TODOS' | 'ESTE_MES' | 'MES_ANTERIOR' | 'ULTIMOS_30' | 'ANO_ATUAL' | 'CUSTOM'>('TODOS');
+  const [commStartDate, setCommStartDate] = useState<string>('');
+  const [commEndDate, setCommEndDate] = useState<string>('');
+  const [commStatusFilter, setCommStatusFilter] = useState<'TODOS' | 'PENDENTE' | 'PAGO'>('TODOS');
+  const [commSearchTerm, setCommSearchTerm] = useState<string>('');
+
+  // Expandable cards state per collaborator name
+  const [expandedCollabCards, setExpandedCollabCards] = useState<Record<string, boolean>>({});
+
+  // Detailed modal report state for a specific collaborator
+  const [detailedReportCollab, setDetailedReportCollab] = useState<any | null>(null);
+  const [modalSearchTerm, setModalSearchTerm] = useState<string>('');
+
+  // Filter sales orders by period for commissions
+  const periodFilteredSalesOrders = useMemo(() => {
+    const TODAY = new Date('2026-07-10');
+    const currentYear = TODAY.getFullYear();
+    const currentMonth = TODAY.getMonth();
+
+    return salesOrders.filter(so => {
+      if (!so.date) return true;
+      const orderDate = new Date(so.date + (so.date.includes('T') ? '' : 'T00:00:00'));
+
+      switch (commPeriodPreset) {
+        case 'ESTE_MES':
+          return orderDate.getFullYear() === currentYear && orderDate.getMonth() === currentMonth;
+        case 'MES_ANTERIOR': {
+          const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+          const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+          return orderDate.getFullYear() === prevYear && orderDate.getMonth() === prevMonth;
+        }
+        case 'ULTIMOS_30': {
+          const thirtyDaysAgo = new Date(TODAY);
+          thirtyDaysAgo.setDate(TODAY.getDate() - 30);
+          return orderDate >= thirtyDaysAgo;
+        }
+        case 'ANO_ATUAL':
+          return orderDate.getFullYear() === currentYear;
+        case 'CUSTOM': {
+          if (commStartDate) {
+            const start = new Date(commStartDate + 'T00:00:00');
+            if (orderDate < start) return false;
+          }
+          if (commEndDate) {
+            const end = new Date(commEndDate + 'T23:59:59');
+            if (orderDate > end) return false;
+          }
+          return true;
+        }
+        case 'TODOS':
+        default:
+          return true;
+      }
+    });
+  }, [salesOrders, commPeriodPreset, commStartDate, commEndDate]);
+
   // Collaborators Commissions calculation
   const commissionSummary = useMemo(() => {
     if (!collaborators || collaborators.length === 0) {
-      return { eligibleCollabs: [], totalPendingValue: 0, totalPendingOrdersCount: 0 };
+      return { eligibleCollabs: [], totalPendingValue: 0, totalPaidValue: 0, totalSalesVolume: 0, totalOrdersCount: 0 };
     }
 
     const matchOperator = (op: string | undefined, collabName: string) => {
@@ -167,7 +233,6 @@ export default function FinanceTab({
 
     const isEligibleOrder = (so: SalesOrder) => {
       if (!so || so.status === 'Orçamento' || so.status === 'Cancelado') return false;
-      if (so.commissionPaid) return false;
 
       // Explicit commission set on order
       if ((so.commissionPercentage !== undefined && so.commissionPercentage !== null && so.commissionPercentage > 0) || (so.commissionValue !== undefined && so.commissionValue !== null && so.commissionValue > 0)) {
@@ -198,85 +263,176 @@ export default function FinanceTab({
       return true;
     };
 
+    const searchLower = String(commSearchTerm || '').toLowerCase().trim();
+
     // Group sales orders by collaborator / operator
     const eligibleCollabs = collaborators
       .filter(c => {
+        if (commCollabFilter !== 'TODOS' && c.name !== commCollabFilter) return false;
         if (c.commissionEligible || (c.commissionPercentage || 0) > 0) return true;
-        // Also include collaborator if they are operator on any eligible sales order
-        return salesOrders.some(so => (matchOperator(so.operator, c.name) || matchOperator(so.lastOperator, c.name)) && isEligibleOrder(so));
+        return periodFilteredSalesOrders.some(so => (matchOperator(so.operator, c.name) || matchOperator(so.lastOperator, c.name)) && isEligibleOrder(so));
       })
       .map(collab => {
-        const pct = collab.commissionPercentage || 0;
+        const defaultPct = collab.commissionPercentage || 0;
 
-        // Find non-cancelled, non-paid eligible orders for this collaborator
-        const eligibleOrders = salesOrders.filter(so => {
+        // Find orders in period for this collaborator
+        const collabOrders = periodFilteredSalesOrders.filter(so => {
           if (!isEligibleOrder(so)) return false;
-          return matchOperator(so.operator, collab.name) || matchOperator(so.lastOperator, collab.name);
+          const isOperator = matchOperator(so.operator, collab.name) || matchOperator(so.lastOperator, collab.name);
+          if (!isOperator) return false;
+
+          if (commStatusFilter === 'PENDENTE' && so.commissionPaid) return false;
+          if (commStatusFilter === 'PAGO' && !so.commissionPaid) return false;
+
+          if (searchLower) {
+            const matchesId = String(so.id || '').toLowerCase().includes(searchLower);
+            const matchesClient = String(so.client || '').toLowerCase().includes(searchLower);
+            const matchesItems = String(so.items || '').toLowerCase().includes(searchLower);
+            if (!matchesId && !matchesClient && !matchesItems) return false;
+          }
+
+          return true;
         });
 
-        const pendingOrdersCount = eligibleOrders.length;
-        const totalSalesAmount = eligibleOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-        const commissionAmount = eligibleOrders.reduce((sum, o) => {
-          if (o.commissionValue && o.commissionValue > 0) {
-            return sum + o.commissionValue;
-          }
+        const pendingOrders = collabOrders.filter(o => !o.commissionPaid);
+        const paidOrders = collabOrders.filter(o => o.commissionPaid);
+
+        const calculateOrderCommission = (o: SalesOrder) => {
+          if (o.commissionValue && o.commissionValue > 0) return o.commissionValue;
           const orderPct = (o.commissionPercentage !== undefined && o.commissionPercentage !== null && o.commissionPercentage > 0)
             ? o.commissionPercentage
-            : pct;
-          return sum + ((o.value || 0) * orderPct) / 100;
-        }, 0);
+            : defaultPct;
+          return ((o.value || 0) * orderPct) / 100;
+        };
+
+        const totalSalesAmount = collabOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+        const pendingCommissionAmount = pendingOrders.reduce((sum, o) => sum + calculateOrderCommission(o), 0);
+        const paidCommissionAmount = paidOrders.reduce((sum, o) => sum + calculateOrderCommission(o), 0);
+        const totalCommissionAmount = pendingCommissionAmount + paidCommissionAmount;
 
         return {
           collaborator: collab,
-          eligibleOrders,
-          pendingOrdersCount,
+          allOrders: collabOrders,
+          eligibleOrders: pendingOrders, // For payout compatibility
+          pendingOrders,
+          paidOrders,
+          pendingOrdersCount: pendingOrders.length,
+          paidOrdersCount: paidOrders.length,
+          totalOrdersCount: collabOrders.length,
           totalSalesAmount,
-          commissionAmount
+          pendingCommissionAmount,
+          paidCommissionAmount,
+          commissionAmount: pendingCommissionAmount, // For payout compatibility
+          totalCommissionAmount
         };
       });
 
-    // Handle any eligible orders that have an operator not in collaborators list or unassigned
-    const processedOrderIds = new Set(eligibleCollabs.flatMap(item => item.eligibleOrders.map(o => o.id)));
-    const unassignedEligibleOrders = salesOrders.filter(so => !processedOrderIds.has(so.id) && isEligibleOrder(so));
+    // Handle unassigned orders
+    if (commCollabFilter === 'TODOS' || commCollabFilter === 'Outros Operadores / Geral') {
+      const processedOrderIds = new Set(eligibleCollabs.flatMap(item => item.allOrders.map(o => o.id)));
+      const unassignedOrders = periodFilteredSalesOrders.filter(so => {
+        if (processedOrderIds.has(so.id)) return false;
+        if (!isEligibleOrder(so)) return false;
 
-    if (unassignedEligibleOrders.length > 0) {
-      const pendingOrdersCount = unassignedEligibleOrders.length;
-      const totalSalesAmount = unassignedEligibleOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-      const commissionAmount = unassignedEligibleOrders.reduce((sum, o) => {
-        if (o.commissionValue && o.commissionValue > 0) {
-          return sum + o.commissionValue;
+        if (commStatusFilter === 'PENDENTE' && so.commissionPaid) return false;
+        if (commStatusFilter === 'PAGO' && !so.commissionPaid) return false;
+
+        if (searchLower) {
+          const matchesId = String(so.id || '').toLowerCase().includes(searchLower);
+          const matchesClient = String(so.client || '').toLowerCase().includes(searchLower);
+          const matchesItems = String(so.items || '').toLowerCase().includes(searchLower);
+          if (!matchesId && !matchesClient && !matchesItems) return false;
         }
-        const orderPct = (o.commissionPercentage !== undefined && o.commissionPercentage !== null && o.commissionPercentage > 0)
-          ? o.commissionPercentage
-          : 0;
-        return sum + ((o.value || 0) * orderPct) / 100;
-      }, 0);
 
-      eligibleCollabs.push({
-        collaborator: {
-          name: 'Outros Operadores / Geral',
-          role: 'Vendedor Operacional',
-          email: 'vendas@estilocoifas.com.br',
-          commissionPercentage: 0,
-          commissionEligible: true,
-          status: 'Ativo'
-        } as any,
-        eligibleOrders: unassignedEligibleOrders,
-        pendingOrdersCount,
-        totalSalesAmount,
-        commissionAmount
+        return true;
       });
+
+      if (unassignedOrders.length > 0) {
+        const pendingOrders = unassignedOrders.filter(o => !o.commissionPaid);
+        const paidOrders = unassignedOrders.filter(o => o.commissionPaid);
+        const totalSalesAmount = unassignedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+
+        const calculateOrderCommission = (o: SalesOrder) => {
+          if (o.commissionValue && o.commissionValue > 0) return o.commissionValue;
+          return ((o.value || 0) * (o.commissionPercentage || 0)) / 100;
+        };
+
+        const pendingCommissionAmount = pendingOrders.reduce((sum, o) => sum + calculateOrderCommission(o), 0);
+        const paidCommissionAmount = paidOrders.reduce((sum, o) => sum + calculateOrderCommission(o), 0);
+
+        eligibleCollabs.push({
+          collaborator: {
+            name: 'Outros Operadores / Geral',
+            role: 'Vendedor Operacional',
+            email: 'vendas@estilocoifas.com.br',
+            commissionPercentage: 0,
+            commissionEligible: true,
+            status: 'Ativo'
+          } as any,
+          allOrders: unassignedOrders,
+          eligibleOrders: pendingOrders,
+          pendingOrders,
+          paidOrders,
+          pendingOrdersCount: pendingOrders.length,
+          paidOrdersCount: paidOrders.length,
+          totalOrdersCount: unassignedOrders.length,
+          totalSalesAmount,
+          pendingCommissionAmount,
+          paidCommissionAmount,
+          commissionAmount: pendingCommissionAmount,
+          totalCommissionAmount: pendingCommissionAmount + paidCommissionAmount
+        });
+      }
     }
 
-    const totalPendingValue = eligibleCollabs.reduce((sum, item) => sum + item.commissionAmount, 0);
-    const totalPendingOrdersCount = eligibleCollabs.reduce((sum, item) => sum + item.pendingOrdersCount, 0);
+    const totalPendingValue = eligibleCollabs.reduce((sum, item) => sum + item.pendingCommissionAmount, 0);
+    const totalPaidValue = eligibleCollabs.reduce((sum, item) => sum + item.paidCommissionAmount, 0);
+    const totalSalesVolume = eligibleCollabs.reduce((sum, item) => sum + item.totalSalesAmount, 0);
+    const totalOrdersCount = eligibleCollabs.reduce((sum, item) => sum + item.totalOrdersCount, 0);
 
     return {
       eligibleCollabs,
       totalPendingValue,
-      totalPendingOrdersCount
+      totalPaidValue,
+      totalSalesVolume,
+      totalOrdersCount,
+      totalPendingOrdersCount: eligibleCollabs.reduce((sum, item) => sum + item.pendingOrdersCount, 0)
     };
-  }, [collaborators, salesOrders, customers]);
+  }, [collaborators, periodFilteredSalesOrders, customers, commCollabFilter, commStatusFilter, commSearchTerm]);
+
+  // CSV Export helper for collaborator commission breakdown
+  const handleExportCSV = (item: any) => {
+    const headers = ['ID Pedido', 'Data', 'Cliente', 'Segmento', 'Itens / Produtos', 'Valor Pedido (R$)', '% Comissão', 'Valor Comissão (R$)', 'Status Comissão'];
+    const rows = item.allOrders.map((o: SalesOrder) => {
+      const pct = (o.commissionPercentage !== undefined && o.commissionPercentage !== null && o.commissionPercentage > 0)
+        ? o.commissionPercentage
+        : (item.collaborator.commissionPercentage || 0);
+      const commVal = (o.commissionValue && o.commissionValue > 0)
+        ? o.commissionValue
+        : ((o.value || 0) * pct) / 100;
+
+      return [
+        o.id,
+        o.date || '',
+        `"${String(o.client || '').replace(/"/g, '""')}"`,
+        `"${String(o.clientSegment || 'Cliente Final').replace(/"/g, '""')}"`,
+        `"${String(o.items || '').replace(/"/g, '""')}"`,
+        (o.value || 0).toFixed(2),
+        pct.toFixed(2),
+        commVal.toFixed(2),
+        o.commissionPaid ? 'PAGO' : 'PENDENTE'
+      ];
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map((e: string[]) => e.join(';'))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `relatorio_comissoes_${String(item.collaborator.name).replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Derive pending commission expense items for the financial ledger
   const commissionPendingExpenses = useMemo(() => {
@@ -1320,138 +1476,399 @@ export default function FinanceTab({
                 Regra Operacional de Comissões (Apenas Cliente Final)
               </h4>
               <p className="text-[11px] text-emerald-800 leading-relaxed">
-                As comissões são calculadas automaticamente com base no percentual cadastrado no perfil de cada colaborador elegível, <strong>exclusivamente para vendas destinadas a &quot;Cliente Final&quot;</strong> (vendas para &quot;Lojista&quot; são isentas de comissão). Quando o ADM dá baixa nos créditos, o sistema registra uma <strong>Despesa Financeira</strong> e zera o saldo atual do colaborador, mantendo o histórico de pagamentos para consulta futura.
+                As comissões são calculadas automaticamente com base no percentual cadastrado no perfil de cada colaborador elegível, <strong>exclusivamente para vendas destinadas a &quot;Cliente Final&quot;</strong> (vendas para &quot;Lojista&quot; são isentas de comissão). Utilize os filtros abaixo para visualizar os relatórios detalhados por <strong>Colaborador, Período e Pedidos Específicos</strong>.
               </p>
             </div>
           </div>
 
-          {/* Key Metrics */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Créditos Pendentes a Pagar</span>
-              <h3 className="text-xl font-bold text-slate-900 font-mono mt-1">
+          {/* COMMISSION FILTER CONTROL BAR */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Filtros do Relatório de Comissões</h3>
+              </div>
+              {(commCollabFilter !== 'TODOS' || commPeriodPreset !== 'TODOS' || commStatusFilter !== 'TODOS' || commSearchTerm) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCommCollabFilter('TODOS');
+                    setCommPeriodPreset('TODOS');
+                    setCommStatusFilter('TODOS');
+                    setCommSearchTerm('');
+                    setCommStartDate('');
+                    setCommEndDate('');
+                  }}
+                  className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                >
+                  Limpar Todos os Filtros
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Filter 1: By Collaborator */}
+              <div>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Colaborador / Vendedor</label>
+                <select
+                  value={commCollabFilter}
+                  onChange={e => setCommCollabFilter(e.target.value)}
+                  className="w-full text-xs border border-slate-200 px-3 py-2 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-semibold text-slate-700"
+                >
+                  <option value="TODOS">Todos os Colaboradores</option>
+                  {collaborators.map(c => (
+                    <option key={c.name} value={c.name}>
+                      {c.name} ({c.commissionPercentage || 0}%)
+                    </option>
+                  ))}
+                  <option value="Outros Operadores / Geral">Outros Operadores / Geral</option>
+                </select>
+              </div>
+
+              {/* Filter 2: By Period Preset */}
+              <div>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Período de Aferição</label>
+                <select
+                  value={commPeriodPreset}
+                  onChange={e => setCommPeriodPreset(e.target.value as any)}
+                  className="w-full text-xs border border-slate-200 px-3 py-2 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-semibold text-slate-700"
+                >
+                  <option value="TODOS">Todos os Períodos (Geral)</option>
+                  <option value="ESTE_MES">Este Mês (Mês Atual)</option>
+                  <option value="MES_ANTERIOR">Mês Anterior</option>
+                  <option value="ULTIMOS_30">Últimos 30 Dias</option>
+                  <option value="ANO_ATUAL">Ano Atual (2026)</option>
+                  <option value="CUSTOM">Personalizado (Data de/até)</option>
+                </select>
+              </div>
+
+              {/* Filter 3: By Commission Status */}
+              <div>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Status da Comissão</label>
+                <select
+                  value={commStatusFilter}
+                  onChange={e => setCommStatusFilter(e.target.value as any)}
+                  className="w-full text-xs border border-slate-200 px-3 py-2 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-semibold text-slate-700"
+                >
+                  <option value="TODOS">Todas (Pendentes e Pagas)</option>
+                  <option value="PENDENTE">Somente Pendentes (A Zerar)</option>
+                  <option value="PAGO">Somente Já Quitadas (Pagas)</option>
+                </select>
+              </div>
+
+              {/* Filter 4: Text Search */}
+              <div>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Buscar Pedido / Cliente / Produto</label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Ex: #VD-001, Maria, Coifa..."
+                    value={commSearchTerm}
+                    onChange={e => setCommSearchTerm(e.target.value)}
+                    className="w-full text-xs border border-slate-200 pl-8 pr-3 py-1.5 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Date Inputs if CUSTOM mode selected */}
+            {commPeriodPreset === 'CUSTOM' && (
+              <div className="flex items-center gap-3 pt-2 border-t border-slate-100 animate-in fade-in duration-150">
+                <div className="flex-1">
+                  <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Data Inicial</label>
+                  <input
+                    type="date"
+                    value={commStartDate}
+                    onChange={e => setCommStartDate(e.target.value)}
+                    className="w-full text-xs border border-slate-200 px-3 py-1.5 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Data Final</label>
+                  <input
+                    type="date"
+                    value={commEndDate}
+                    onChange={e => setCommEndDate(e.target.value)}
+                    className="w-full text-xs border border-slate-200 px-3 py-1.5 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Key Executive Metrics Cards for Filtered Selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-3xs">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono block">Volume de Vendas</span>
+              <h3 className="text-lg font-bold text-slate-900 font-mono mt-0.5">
+                R$ {commissionSummary.totalSalesVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </h3>
+              <p className="text-[9px] text-slate-400 mt-0.5">Vendas elegíveis no filtro</p>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-xl border border-emerald-100 bg-emerald-50/20 shadow-3xs">
+              <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider font-mono block">Créditos Pendentes</span>
+              <h3 className="text-lg font-bold text-emerald-700 font-mono mt-0.5">
                 R$ {commissionSummary.totalPendingValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Total acumulado não pago</p>
+              <p className="text-[9px] text-emerald-600 mt-0.5">A pagar aos vendedores</p>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Colaboradores Beneficiados</span>
-              <h3 className="text-xl font-bold text-slate-900 font-mono mt-1">
-                {commissionSummary.eligibleCollabs.length} Beneficiados
+            <div className="bg-white p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/20 shadow-3xs">
+              <span className="text-[9px] font-bold text-indigo-800 uppercase tracking-wider font-mono block">Comissões Quitadas</span>
+              <h3 className="text-lg font-bold text-indigo-700 font-mono mt-0.5">
+                R$ {commissionSummary.totalPaidValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Com percentual ativo cadastrado</p>
+              <p className="text-[9px] text-indigo-600 mt-0.5">Já baixadas pelo ADM</p>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Pedidos Elegíveis Pendentes</span>
-              <h3 className="text-xl font-bold text-slate-900 font-mono mt-1">
-                {commissionSummary.totalPendingOrdersCount} Pedidos
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-3xs">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono block">Comissão Total Aferida</span>
+              <h3 className="text-lg font-bold text-slate-800 font-mono mt-0.5">
+                R$ {(commissionSummary.totalPendingValue + commissionSummary.totalPaidValue).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Vendas faturadas a Cliente Final</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">Pendente + Quitada</p>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-3xs">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono block">Qtd. Pedidos Elegíveis</span>
+              <h3 className="text-lg font-bold text-slate-900 font-mono mt-0.5">
+                {commissionSummary.totalOrdersCount} Pedidos
+              </h3>
+              <p className="text-[9px] text-slate-400 mt-0.5">Com comissão gerada</p>
             </div>
           </div>
 
-          {/* Section 1: Pending Commissions Report & Payout Action */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-3xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          {/* SECTION 1: RELATÓRIO POR COLABORADOR COM DETALHAMENTO DE PEDIDOS */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                  Relatório de Créditos a Ser Pago no Período
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <User className="w-4 h-4 text-indigo-600" />
+                  Relatório por Colaborador & Pedidos Geradores de Comissão
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Aferição de créditos acumulados sobre vendas de Clientes Finais.
+                  Clique no botão do colaborador para expandir a lista com os pedidos exatos que geraram cada comissão.
                 </p>
               </div>
               <span className="text-[10px] bg-slate-100 font-mono font-bold text-slate-600 px-2 py-1 rounded">
-                ADM Conferência
+                {commissionSummary.eligibleCollabs.length} Colaborador(es)
               </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-[9px] font-bold text-slate-500 uppercase tracking-wider font-mono border-b border-slate-100">
-                    <th className="py-3 px-4">Colaborador</th>
-                    <th className="py-3 px-4 text-center">Benefício (%)</th>
-                    <th className="py-3 px-4 text-center">Pedidos Cliente Final</th>
-                    <th className="py-3 px-4 text-right font-mono">Volume de Vendas (R$)</th>
-                    <th className="py-3 px-4 text-right font-mono">Crédito de Comissão (R$)</th>
-                    <th className="py-3 px-4 text-center">Ação ADM</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {commissionSummary.eligibleCollabs.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 italic">
-                        Nenhum colaborador possui a opção de comissão ativada no cadastro. Acesse a aba &quot;Acessos&quot; para configurar.
-                      </td>
-                    </tr>
-                  ) : (
-                    commissionSummary.eligibleCollabs.map(item => (
-                      <tr key={item.collaborator.name} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3 px-4 font-semibold text-slate-900">
+            {commissionSummary.eligibleCollabs.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 italic space-y-2">
+                <AlertCircle className="w-8 h-8 text-slate-300 mx-auto" />
+                <p>Nenhum registro de comissão encontrado para os filtros selecionados.</p>
+              </div>
+            ) : (
+              commissionSummary.eligibleCollabs.map(item => {
+                const collabName = item.collaborator.name;
+                const isExpanded = !!expandedCollabCards[collabName];
+
+                return (
+                  <div key={collabName} className="bg-white rounded-xl border border-slate-200 shadow-3xs overflow-hidden transition-all">
+                    {/* Collaborator Card Header */}
+                    <div className="p-4 bg-slate-50/70 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-black text-sm shrink-0">
+                          {collabName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
                           <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                            <div>
-                              <div className="font-bold">{item.collaborator.name}</div>
-                              <div className="text-[10px] text-slate-400 font-normal">{item.collaborator.role} • {item.collaborator.email}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-center font-mono font-bold text-indigo-600">
-                          {item.collaborator.commissionPercentage}%
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {item.pendingOrdersCount > 0 ? (
-                            <span className="bg-emerald-100 text-emerald-900 text-[10px] font-bold px-2 py-0.5 rounded-full font-mono">
-                              {item.pendingOrdersCount} pedido(s)
+                            <h4 className="font-bold text-slate-900 text-sm">{collabName}</h4>
+                            <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full font-mono">
+                              Taxa: {item.collaborator.commissionPercentage || 0}%
                             </span>
-                          ) : (
-                            <span className="text-slate-400 font-mono text-[10px]">0 pedidos</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
-                          R$ {item.totalSalesAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700 text-sm">
-                          R$ {item.commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {item.commissionAmount > 0 ? (
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            {item.collaborator.role || 'Vendedor'} • {item.collaborator.email || 'vendas@estilocoifas.com.br'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* KPI Summary Pill for this Collaborator */}
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        <div className="bg-white px-3 py-1.5 rounded-lg border border-slate-200 font-mono">
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Vendas</span>
+                          <span className="font-bold text-slate-800">
+                            R$ {item.totalSalesAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <div className="bg-emerald-50/80 px-3 py-1.5 rounded-lg border border-emerald-200/80 font-mono">
+                          <span className="text-[9px] text-emerald-800 uppercase font-bold block">Pendente (A Zerar)</span>
+                          <span className="font-bold text-emerald-700">
+                            R$ {item.pendingCommissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <div className="bg-indigo-50/80 px-3 py-1.5 rounded-lg border border-indigo-200/80 font-mono">
+                          <span className="text-[9px] text-indigo-800 uppercase font-bold block">Quitado (Pago)</span>
+                          <span className="font-bold text-indigo-700">
+                            R$ {item.paidCommissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          {item.pendingCommissionAmount > 0 && (
                             <button
                               type="button"
                               onClick={() => setSelectedCollabPayout(item)}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1.5"
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1"
+                              title="Pagar e Zerar Créditos Pendentes"
                             >
                               <DollarSign className="w-3.5 h-3.5" />
-                              <span>Pagar / Zerar Crédito</span>
+                              <span>Pagar / Zerar</span>
                             </button>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 italic">Sem créditos pendentes</span>
                           )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setDetailedReportCollab(item)}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[11px] rounded-lg shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1"
+                            title="Abrir Relatório Analítico de Pedidos"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Relatório Detalhado</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleExportCSV(item)}
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition-all cursor-pointer"
+                            title="Baixar Planilha CSV"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setExpandedCollabCards(prev => ({ ...prev, [collabName]: !prev[collabName] }))}
+                            className="px-3 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-[11px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <span>{isExpanded ? 'Ocultar Pedidos' : `Ver Pedidos (${item.totalOrdersCount})`}</span>
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expandable Table: Exact Orders that generated this Commission */}
+                    {isExpanded && (
+                      <div className="p-4 bg-slate-50/30 border-t border-slate-100 space-y-3 animate-in slide-in-from-top-2 duration-150">
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <ShoppingBag className="w-3.5 h-3.5 text-indigo-600" />
+                            Pedidos Que Geraram Comissão para {collabName} ({item.totalOrdersCount} Pedidos)
+                          </h5>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            Apenas vendas destinadas a Cliente Final
+                          </span>
+                        </div>
+
+                        {item.allOrders.length === 0 ? (
+                          <div className="p-4 bg-white rounded-lg border border-slate-200 text-center text-slate-400 italic text-xs">
+                            Nenhum pedido encontrado para o filtro selecionado.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-slate-100 text-[9px] font-bold text-slate-600 uppercase tracking-wider font-mono border-b border-slate-200">
+                                  <th className="py-2.5 px-3">Nº Pedido</th>
+                                  <th className="py-2.5 px-3 font-mono">Data</th>
+                                  <th className="py-2.5 px-3">Cliente / Razão Social</th>
+                                  <th className="py-2.5 px-3">Itens / Produtos</th>
+                                  <th className="py-2.5 px-3 text-right font-mono">Valor Pedido (R$)</th>
+                                  <th className="py-2.5 px-3 text-center">% Comissão</th>
+                                  <th className="py-2.5 px-3 text-right font-mono">Comissão Gerada (R$)</th>
+                                  <th className="py-2.5 px-3 text-center">Status Comissão</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                                {item.allOrders.map((o: SalesOrder) => {
+                                  const orderPct = (o.commissionPercentage !== undefined && o.commissionPercentage !== null && o.commissionPercentage > 0)
+                                    ? o.commissionPercentage
+                                    : (item.collaborator.commissionPercentage || 0);
+                                  const commVal = (o.commissionValue && o.commissionValue > 0)
+                                    ? o.commissionValue
+                                    : ((o.value || 0) * orderPct) / 100;
+
+                                  return (
+                                    <tr key={o.id} className="hover:bg-slate-50 transition-colors">
+                                      <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">
+                                        <div className="flex items-center gap-1.5">
+                                          <span>{o.id}</span>
+                                          <span className="text-[8px] px-1.5 py-0.2 rounded font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                            {o.status}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                                        {o.date ? new Date(o.date + (o.date.includes('T') ? '' : 'T00:00:00')).toLocaleDateString('pt-BR') : '-'}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-semibold text-slate-900">
+                                        <div>{o.client}</div>
+                                        <div className="text-[9px] text-slate-400 font-normal">
+                                          {o.clientSegment || 'Cliente Final'}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-[11px] text-slate-600 max-w-xs truncate" title={o.items}>
+                                        {o.items || 'Produtos sob medida'}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">
+                                        R$ {(o.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-600">
+                                        {orderPct}%
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                                        R$ {commVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center">
+                                        {o.commissionPaid ? (
+                                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold font-mono inline-flex items-center gap-1">
+                                            <CheckCircle2 className="w-3 h-3" />
+                                            QUITADA
+                                          </span>
+                                        ) : (
+                                          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold font-mono inline-flex items-center gap-1">
+                                            <Clock className="w-3 h-3" />
+                                            PENDENTE
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
 
-          {/* Section 2: Historical Commission Payouts */}
+          {/* SECTION 2: HISTÓRICO DE PAGAMENTOS QUITADOS */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-3xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                  Histórico de Pagamentos de Comissões (Quitados)
+                  Histórico Permanente de Comissões Pagas (Quitadas)
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Registro permanente de créditos pagos e contabilizados nas despesas operacionais.
+                  Registro oficial de baixas realizadas com lançamento integrado de despesa financeira.
                 </p>
               </div>
               <span className="text-[10px] bg-emerald-50 text-emerald-800 font-mono font-bold px-2 py-1 rounded">
-                {commissionPayouts.length} Pagamento(s) Registrado(s)
+                {commissionPayouts.length} Pagamento(s) Baixado(s)
               </span>
             </div>
 
@@ -1459,20 +1876,20 @@ export default function FinanceTab({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 text-[9px] font-bold text-slate-500 uppercase tracking-wider font-mono border-b border-slate-100">
-                    <th className="py-3 px-4">Código / Data</th>
+                    <th className="py-3 px-4">Código / Data Quitação</th>
                     <th className="py-3 px-4">Colaborador</th>
                     <th className="py-3 px-4 text-center">Taxa (%)</th>
                     <th className="py-3 px-4 text-center">Qtd. Pedidos</th>
                     <th className="py-3 px-4 text-right font-mono">Valor Pago (R$)</th>
-                    <th className="py-3 px-4">Status Financeiro</th>
-                    <th className="py-3 px-4">Observações</th>
+                    <th className="py-3 px-4 text-center">Status Financeiro</th>
+                    <th className="py-3 px-4">Observações do ADM</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                   {commissionPayouts.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-slate-400 italic">
-                        Nenhum histórico de pagamento de comissão realizado até o momento.
+                        Nenhum histórico de baixa de comissão registrado até o momento.
                       </td>
                     </tr>
                   ) : (
@@ -1494,7 +1911,7 @@ export default function FinanceTab({
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700">
                           R$ {payout.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-4 text-center">
                           <span className="bg-emerald-100 text-emerald-900 text-[10px] font-bold px-2 py-0.5 rounded font-mono inline-flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" />
                             DESPESA PAGA
@@ -1508,6 +1925,211 @@ export default function FinanceTab({
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALHADO COMPLETO POR COLABORADOR */}
+      {detailedReportCollab && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg">
+                  <FileText className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-base tracking-tight">
+                    Relatório Analítico de Comissões por Pedido
+                  </h3>
+                  <p className="text-[10px] text-slate-300">
+                    Demonstrativo detalhado de vendas e créditos do colaborador {detailedReportCollab.collaborator.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDetailedReportCollab(null);
+                  setModalSearchTerm('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-700">
+              {/* Report Header Card */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-bold uppercase text-indigo-600 tracking-wider">Perfil do Colaborador</span>
+                  <h4 className="text-lg font-black text-slate-900">{detailedReportCollab.collaborator.name}</h4>
+                  <p className="text-[11px] text-slate-500">
+                    Cargo: {detailedReportCollab.collaborator.role || 'Vendedor'} • Email: {detailedReportCollab.collaborator.email || 'N/I'} • Percentual Cadastrado: <strong>{detailedReportCollab.collaborator.commissionPercentage || 0}%</strong>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleExportCSV(detailedReportCollab)}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Baixar Planilha CSV</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Imprimir / PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* KPI Summary Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-100/80 p-3 rounded-lg border border-slate-200">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase block font-mono">Volume de Vendas</span>
+                  <span className="text-base font-bold text-slate-900 font-mono">
+                    R$ {detailedReportCollab.totalSalesAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200">
+                  <span className="text-[9px] font-bold text-emerald-800 uppercase block font-mono">Comissão Pendente</span>
+                  <span className="text-base font-bold text-emerald-700 font-mono">
+                    R$ {detailedReportCollab.pendingCommissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200">
+                  <span className="text-[9px] font-bold text-indigo-800 uppercase block font-mono">Comissão Quitada</span>
+                  <span className="text-base font-bold text-indigo-700 font-mono">
+                    R$ {detailedReportCollab.paidCommissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-slate-100/80 p-3 rounded-lg border border-slate-200">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase block font-mono">Total de Pedidos</span>
+                  <span className="text-base font-bold text-slate-900 font-mono">
+                    {detailedReportCollab.totalOrdersCount} Pedidos
+                  </span>
+                </div>
+              </div>
+
+              {/* Search Inside Modal */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  placeholder="Filtrar pedidos dentro deste relatório (ID, Cliente ou Produto)..."
+                  value={modalSearchTerm}
+                  onChange={e => setModalSearchTerm(e.target.value)}
+                  className="w-full text-xs border border-slate-200 pl-9 pr-3 py-2 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                />
+              </div>
+
+              {/* Comprehensive Orders Table */}
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 text-[9px] font-bold text-slate-600 uppercase tracking-wider font-mono border-b border-slate-200">
+                      <th className="py-3 px-3">Pedido ID</th>
+                      <th className="py-3 px-3 font-mono">Data Pedido</th>
+                      <th className="py-3 px-3">Cliente / Segmento</th>
+                      <th className="py-3 px-3">Especificação dos Produtos / Itens</th>
+                      <th className="py-3 px-3 text-right font-mono">Valor Total (R$)</th>
+                      <th className="py-3 px-3 text-center">% Aplicada</th>
+                      <th className="py-3 px-3 text-right font-mono">Comissão (R$)</th>
+                      <th className="py-3 px-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                    {detailedReportCollab.allOrders
+                      .filter((o: SalesOrder) => {
+                        if (!modalSearchTerm) return true;
+                        const search = modalSearchTerm.toLowerCase();
+                        return (
+                          String(o.id || '').toLowerCase().includes(search) ||
+                          String(o.client || '').toLowerCase().includes(search) ||
+                          String(o.items || '').toLowerCase().includes(search)
+                        );
+                      })
+                      .map((o: SalesOrder) => {
+                        const orderPct = (o.commissionPercentage !== undefined && o.commissionPercentage !== null && o.commissionPercentage > 0)
+                          ? o.commissionPercentage
+                          : (detailedReportCollab.collaborator.commissionPercentage || 0);
+                        const commVal = (o.commissionValue && o.commissionValue > 0)
+                          ? o.commissionValue
+                          : ((o.value || 0) * orderPct) / 100;
+
+                        return (
+                          <tr key={o.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-3 px-3 font-mono font-bold text-indigo-700">
+                              <div>{o.id}</div>
+                              <span className="text-[8px] text-slate-400 uppercase font-mono">{o.status}</span>
+                            </td>
+                            <td className="py-3 px-3 font-mono text-slate-500 text-[11px]">
+                              {o.date ? new Date(o.date + (o.date.includes('T') ? '' : 'T00:00:00')).toLocaleDateString('pt-BR') : '-'}
+                            </td>
+                            <td className="py-3 px-3 font-semibold text-slate-900">
+                              <div>{o.client}</div>
+                              <div className="text-[9px] text-slate-400 font-normal">{o.clientSegment || 'Cliente Final'}</div>
+                            </td>
+                            <td className="py-3 px-3 text-[11px] text-slate-600 max-w-xs truncate" title={o.items}>
+                              {o.items || 'Produtos industriais sob medida'}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">
+                              R$ {(o.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3 px-3 text-center font-mono font-bold text-indigo-600">
+                              {orderPct}%
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
+                              R$ {commVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              {o.commissionPaid ? (
+                                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold font-mono">
+                                  QUITADA
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold font-mono">
+                                  PENDENTE
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <span className="text-[10px] text-slate-400 font-mono">
+                Estilo Coifas ERP • Relatório Gerado em {new Date().toLocaleDateString('pt-BR')}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setDetailedReportCollab(null);
+                  setModalSearchTerm('');
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg cursor-pointer"
+              >
+                Fechar Relatório
+              </button>
             </div>
           </div>
         </div>

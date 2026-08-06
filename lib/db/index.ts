@@ -20,8 +20,8 @@ export function getDb() {
   const isValidUrl = connectionString && (connectionString.startsWith("postgres://") || connectionString.startsWith("postgresql://"));
 
   if (!isValidUrl) {
-    console.warn("DATABASE_URL variable is missing, invalid, or is an API key instead of a connection string. Using fallback to prevent crash.");
-    connectionString = "postgresql://postgres:postgres@localhost:5432/postgres";
+    console.warn("DATABASE_URL variable is missing, invalid, or is an API key instead of a connection string.");
+    return null;
   }
 
   // Use a fallback or lazy connection to avoid crashing during build phase

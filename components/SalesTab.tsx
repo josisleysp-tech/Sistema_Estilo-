@@ -1004,7 +1004,7 @@ export default function SalesTab({
                         placeholder="Ex: Medida sob medida, acabamento específico, furos adicionais, etc."
                         value={productNote}
                         onChange={(e) => setProductNote(e.target.value)}
-                        className="w-full text-xs border border-slate-200 px-3 py-2 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium placeholder:text-slate-400 whitespace-pre-wrap"
+                        className="w-full text-[16px] leading-[25px] border border-slate-200 px-3 py-2 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium placeholder:text-slate-400 whitespace-pre-wrap"
                       />
                     </div>
 

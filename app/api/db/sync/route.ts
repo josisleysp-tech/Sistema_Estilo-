@@ -471,10 +471,16 @@ async function ensureTablesExist(db: any) {
         }
         console.log(`Table "${tableName}" created successfully.`);
       } catch (createErr: any) {
-        console.error(`Error creating table "${tableName}":`, createErr);
-        throw new Error(
-          `MIGRATION_REQUIRED: A tabela "${tableName}" precisa ser criada no Supabase.`
-        );
+        const createMsg = String(createErr?.message || "").toLowerCase();
+        const createCode = String(createErr?.code || "").toLowerCase();
+        if (createMsg.includes("already exists") || createCode === "42p07") {
+          console.log(`Table "${tableName}" already exists in database.`);
+        } else {
+          console.error(`Error creating table "${tableName}":`, createErr);
+          throw new Error(
+            `MIGRATION_REQUIRED: A tabela "${tableName}" precisa ser criada no Supabase.`
+          );
+        }
       }
     } else {
       if (tableName === "sales_orders") {
@@ -612,8 +618,16 @@ export async function GET() {
     }
 
     const db = getDb();
-    
-    // Ensure tables exist before running query
+    if (!db) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "DATABASE_URL environment variable is not defined or invalid.",
+          isConfigured: false,
+        },
+        { status: 200 }
+      );
+    }
     await ensureTablesExist(db);
 
     // Query each table individually with its own try-catch to prevent a single mismatch from crashing everything
@@ -758,6 +772,16 @@ export async function POST(req: NextRequest) {
     const { inventory, productionOrders, salesOrders, customers, collaborators, purchaseOrders, financialTransactions, commissionPayouts, deleted } = body;
 
     const db = getDb();
+    if (!db) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "DATABASE_URL environment variable is not defined or invalid.",
+          isConfigured: false,
+        },
+        { status: 200 }
+      );
+    }
     
     // Ensure tables exist before running transaction
     await ensureTablesExist(db);

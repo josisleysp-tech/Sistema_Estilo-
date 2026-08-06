@@ -1370,7 +1370,7 @@ export default function Page() {
             setMigrationRequired(true);
             setMigrationSql(result.sql || '');
           }
-          if (result.error) {
+          if (result.error && result.isConfigured) {
             setSyncMessage({
               type: 'error',
               text: `Aviso do Banco de Dados: ${result.error}`
@@ -1378,16 +1378,11 @@ export default function Page() {
           }
         }
       } catch (err: any) {
-        console.error('Failed to load data from Supabase:', err);
+        console.warn('Aviso ao carregar dados do Supabase (utilizando dados locais do navegador):', err?.message || err);
         setSupabaseConfigured(false);
         setSupabaseConnected(false);
         
         loadLocalStorageFallback();
-
-        setSyncMessage({
-          type: 'error',
-          text: `Não foi possível sincronizar com o Supabase: ${err?.message || 'Erro inesperado.'}. Carregados dados locais do navegador.`
-        });
       } finally {
         hasLoadedInitialData.current = true;
       }
