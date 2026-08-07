@@ -598,12 +598,12 @@ export async function GET() {
       );
     }
 
-    const isValidUrl = databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://");
+    const isValidUrl = databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://") || databaseUrl.startsWith("mysql://") || databaseUrl.startsWith("mysql2://");
     if (!isValidUrl) {
       return NextResponse.json(
         {
           success: false,
-          error: "A variável DATABASE_URL está configurada com um formato inválido (deve começar com postgres:// ou postgresql://). Certifique-se de que copiou a Connection String de banco do Supabase, e não a API key.",
+          error: "A variável DATABASE_URL está configurada com um formato inválido (deve começar com postgres://, postgresql:// ou mysql://). Certifique-se de que informou a URI de conexão do banco de dados (ex: postgresql://usuario:senha@host:5432/banco ou mysql://usuario:senha@host:3306/banco) e não uma API Key ou string simples.",
           isConfigured: false,
         },
         { 
@@ -756,12 +756,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isValidUrl = databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://");
+    const isValidUrl = databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://") || databaseUrl.startsWith("mysql://") || databaseUrl.startsWith("mysql2://");
     if (!isValidUrl) {
       return NextResponse.json(
         {
           success: false,
-          error: "A variável DATABASE_URL está configurada com um formato inválido (deve começar com postgres:// ou postgresql://). Certifique-se de que copiou a Connection String de banco do Supabase, e não a API key.",
+          error: "A variável DATABASE_URL está configurada com um formato inválido (deve começar com postgres://, postgresql:// ou mysql://). Certifique-se de que informou a URI de conexão do banco de dados (ex: postgresql://usuario:senha@host:5432/banco ou mysql://usuario:senha@host:3306/banco) e não uma API Key ou string simples.",
           isConfigured: false,
         },
         { status: 200 }
