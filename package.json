@@ -15,6 +15,7 @@
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^0.475.0",
     "motion": "^13.0.0",
+    "mysql2": "^3.23.2",
     "next": "^15.1.7",
     "postgres": "^3.4.9",
     "react": "^19.0.0",
