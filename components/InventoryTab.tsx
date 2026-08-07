@@ -26,6 +26,7 @@ import {
   X
 } from 'lucide-react';
 import { InventoryItem, UserAccess } from '../lib/types';
+import { safeSetItem } from '../lib/utils';
 
 interface InventoryTabProps {
   inventory: InventoryItem[];
@@ -251,7 +252,7 @@ export default function InventoryTab({
   // Save movements
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('inventory_movements', JSON.stringify(movements));
+      safeSetItem('inventory_movements', JSON.stringify(movements));
     }
   }, [movements]);
 

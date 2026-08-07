@@ -5,6 +5,72 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Armazena dados de forma segura no localStorage prevenindo erros de cota (QuotaExceededError).
+ * Caso a memória do navegador fique cheia, sanitiza conteúdos pesados (como base64/imagens)
+ * ou falha silenciosamente sem interromper a aplicação.
+ */
+export function safeSetItem(key: string, value: string): boolean {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err: any) {
+    console.warn(`[localStorage] Excesso de cota ao salvar a chave "${key}". Otimizando dados...`, err);
+
+    // Estratégia 1: Sanitização de campos pesados (como imagens/base64 longos)
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        const sanitized = parsed.map((item: any) => {
+          if (!item || typeof item !== 'object') return item;
+          const clone = { ...item };
+          for (const k of Object.keys(clone)) {
+            if (typeof clone[k] === 'string' && clone[k].length > 30000) {
+              clone[k] = '[Dados extensos resumidos para cache local]';
+            }
+          }
+          return clone;
+        });
+
+        const sanitizedStr = JSON.stringify(sanitized);
+        localStorage.setItem(key, sanitizedStr);
+        console.info(`[localStorage] Chave "${key}" salva com sucesso após otimização de imagens/anexos.`);
+        return true;
+      }
+    } catch (e) {
+      // Ignora erro de parse
+    }
+
+    // Estratégia 2: Limpeza de chaves temporárias obsoletas no localStorage
+    try {
+      const obsoleteKeys = ['erpf_temp_pdf', 'erpf_log', 'system_parameters_backup'];
+      obsoleteKeys.forEach(k => localStorage.removeItem(k));
+      localStorage.setItem(key, value);
+      return true;
+    } catch (e) {
+      // Ignora
+    }
+
+    // Estratégia 3: Limitar itens do histórico mais antigos no cache offline local
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed) && parsed.length > 30) {
+        const reduced = parsed.slice(-30);
+        localStorage.setItem(key, JSON.stringify(reduced));
+        console.info(`[localStorage] Chave "${key}" salva retendo os 30 registros mais recentes.`);
+        return true;
+      }
+    } catch (e) {
+      // Ignora
+    }
+
+    console.warn(`[localStorage] Não foi possível persistir a chave "${key}" no cache local do navegador devido à cota de memória.`);
+    return false;
+  }
+}
+
 export function getDeliveryAlertStatus(deliveryDateStr?: string, status?: string, customAlertRiskDays?: number) {
   if (!deliveryDateStr || status === 'Entregue' || status === 'Cancelado') {
     return {

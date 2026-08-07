@@ -48,7 +48,7 @@ import {
   WhatsAppConfig
 } from '../lib/types';
 
-import { getDeliveryAlertStatus } from '../lib/utils';
+import { getDeliveryAlertStatus, safeSetItem } from '../lib/utils';
 
 // Import Tab Components
 import DashboardTab from '../components/DashboardTab';
@@ -931,9 +931,15 @@ export default function Page() {
       const savedSegments = localStorage.getItem('industrial_segments');
       const savedParams = localStorage.getItem('system_parameters');
       const savedSuppliers = localStorage.getItem('erpf_suppliers');
+      const savedWaConfig = localStorage.getItem('erpf_whatsapp_config');
 
       // Defer state updates to avoid synchronous cascading renders during hydration
       setTimeout(() => {
+        if (savedWaConfig) {
+          try {
+            setWhatsappConfig(JSON.parse(savedWaConfig));
+          } catch (e) {}
+        }
         if (savedSegments) {
           try {
             const parsed = JSON.parse(savedSegments);
@@ -943,7 +949,7 @@ export default function Page() {
               if (missing.length > 0) {
                 const merged = [...required, ...parsed.filter(p => !required.some(r => r.toLowerCase() === p.toLowerCase()))];
                 setIndustrialSegments(merged);
-                localStorage.setItem('industrial_segments', JSON.stringify(merged));
+                safeSetItem('industrial_segments', JSON.stringify(merged));
               } else {
                 setIndustrialSegments(parsed);
               }
@@ -976,7 +982,7 @@ export default function Page() {
     setSystemParams(params);
     setLogoError(false);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('system_parameters', JSON.stringify(params));
+      safeSetItem('system_parameters', JSON.stringify(params));
     }
   };
 
@@ -987,7 +993,7 @@ export default function Page() {
   ) => {
     setIndustrialSegments(newSegments);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('industrial_segments', JSON.stringify(newSegments));
+      safeSetItem('industrial_segments', JSON.stringify(newSegments));
     }
     
     // Auto-update customers if their segment was renamed or deleted
@@ -1476,13 +1482,13 @@ export default function Page() {
   // Salva no localStorage como fallback toda vez que os dados mudam localmente
   React.useEffect(() => {
     if (hasLoadedInitialData.current && typeof window !== 'undefined') {
-      localStorage.setItem('erpf_inventory', JSON.stringify(inventory));
-      localStorage.setItem('erpf_production_orders', JSON.stringify(productionOrders));
-      localStorage.setItem('erpf_sales_orders', JSON.stringify(salesOrders));
-      localStorage.setItem('erpf_customers', JSON.stringify(customers));
-      localStorage.setItem('erpf_users', JSON.stringify(users));
-      localStorage.setItem('erpf_purchase_orders', JSON.stringify(purchaseOrders));
-      localStorage.setItem('erpf_manual_transactions', JSON.stringify(manualTransactions));
+      safeSetItem('erpf_inventory', JSON.stringify(inventory));
+      safeSetItem('erpf_production_orders', JSON.stringify(productionOrders));
+      safeSetItem('erpf_sales_orders', JSON.stringify(salesOrders));
+      safeSetItem('erpf_customers', JSON.stringify(customers));
+      safeSetItem('erpf_users', JSON.stringify(users));
+      safeSetItem('erpf_purchase_orders', JSON.stringify(purchaseOrders));
+      safeSetItem('erpf_manual_transactions', JSON.stringify(manualTransactions));
     }
   }, [inventory, productionOrders, salesOrders, customers, users, purchaseOrders, manualTransactions]);
 
@@ -2164,7 +2170,7 @@ export default function Page() {
     setLeads(prev => {
       const updated = [lead, ...prev];
       if (typeof window !== 'undefined') {
-        localStorage.setItem('erpf_leads', JSON.stringify(updated));
+        safeSetItem('erpf_leads', JSON.stringify(updated));
       }
       return updated;
     });
@@ -2175,7 +2181,7 @@ export default function Page() {
     setLeads(prev => {
       const updated = prev.map(l => l.id === id ? { ...l, ...updatedFields, operator: currentUser?.name } : l);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('erpf_leads', JSON.stringify(updated));
+        safeSetItem('erpf_leads', JSON.stringify(updated));
       }
       return updated;
     });
@@ -2185,7 +2191,7 @@ export default function Page() {
     setLeads(prev => {
       const updated = prev.filter(l => l.id !== id);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('erpf_leads', JSON.stringify(updated));
+        safeSetItem('erpf_leads', JSON.stringify(updated));
       }
       return updated;
     });
@@ -2210,7 +2216,7 @@ export default function Page() {
   const handleUpdateWhatsAppConfig = (config: WhatsAppConfig) => {
     setWhatsappConfig(config);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('erpf_waconfig', JSON.stringify(config));
+      safeSetItem('erpf_whatsapp_config', JSON.stringify(config));
     }
     setSyncMessage({ type: 'success', text: 'Configurações de WhatsApp salvas!' });
   };
@@ -2646,7 +2652,7 @@ export default function Page() {
     setSuppliers(prev => {
       const updated = [newSupplier, ...prev];
       if (typeof window !== 'undefined') {
-        localStorage.setItem('erpf_suppliers', JSON.stringify(updated));
+        safeSetItem('erpf_suppliers', JSON.stringify(updated));
       }
       return updated;
     });
@@ -2658,7 +2664,7 @@ export default function Page() {
     setSuppliers(prev => {
       const updated = prev.map(s => s.id === updatedSupplier.id ? { ...updatedSupplier, operator: currentUser.name } : s);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('erpf_suppliers', JSON.stringify(updated));
+        safeSetItem('erpf_suppliers', JSON.stringify(updated));
       }
       return updated;
     });
@@ -2670,7 +2676,7 @@ export default function Page() {
     setSuppliers(prev => {
       const updated = prev.filter(s => s.id !== id);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('erpf_suppliers', JSON.stringify(updated));
+        safeSetItem('erpf_suppliers', JSON.stringify(updated));
       }
       return updated;
     });
@@ -2682,7 +2688,7 @@ export default function Page() {
     setSuppliers(prev => {
       const updated = prev.map(s => s.id === id ? { ...s, status: newStatus, operator: currentUser.name } : s);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('erpf_suppliers', JSON.stringify(updated));
+        safeSetItem('erpf_suppliers', JSON.stringify(updated));
       }
       return updated;
     });
@@ -2759,7 +2765,7 @@ export default function Page() {
   const handleDeleteUser = (name: string) => {
     setUsers(prev => {
       const updated = prev.filter(u => u.name !== name);
-      localStorage.setItem('erpf_users', JSON.stringify(updated));
+      safeSetItem('erpf_users', JSON.stringify(updated));
       return updated;
     });
     setSyncMessage({ type: 'info', text: `Colaborador "${name}" excluído com sucesso.` });

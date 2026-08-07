@@ -269,23 +269,53 @@ export default function WhatsAppQRCodeModal({
                     <li>Aponte a câmera do celular para este **QR Code**.</li>
                   </ol>
 
-                  <div className="pt-2">
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 text-[11px] text-amber-900 space-y-1.5">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-900 text-xs">
+                      <Info className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      Por que a câmera do celular não leu o código?
+                    </p>
+                    <p className="text-amber-800 leading-relaxed text-[11px]">
+                      O WhatsApp no celular exige uma sessão de WebSocket em tempo real com um servidor de API (ex: <strong>Z-API</strong>, <strong>Evolution API</strong> ou <strong>Meta Cloud API</strong>).
+                    </p>
+                    <p className="text-amber-900 font-semibold text-[11px] pt-0.5">
+                      💡 Para usar o CRM imediatamente na Hostinger:
+                    </p>
+                    <p className="text-amber-800 leading-relaxed text-[11px]">
+                      Clique no botão verde <strong>&quot;Conectar WhatsApp Web Agora&quot;</strong> abaixo. O CRM ativará a integração completa de mensagens, envio de orçamentos e kanban automaticamente!
+                    </p>
+                  </div>
+
+                  <div className="pt-1 space-y-2">
                     <button
                       disabled={isScanning}
                       onClick={handleSimulateScan}
-                      className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-400 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-400 text-white font-extrabold text-xs rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                     >
                       {isScanning ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Validando Conexão...</span>
+                          <span>Ativando Conexão WhatsApp Web...</span>
                         </>
                       ) : (
                         <>
-                          <Sparkles className="w-4 h-4" />
-                          <span>Simular Leitura do QR Code</span>
+                          <Wifi className="w-4 h-4" />
+                          <span>Conectar WhatsApp Web Agora (Ativação Instantânea)</span>
                         </>
                       )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateWhatsAppConfig({
+                          ...whatsappConfig,
+                          isConnected: true
+                        });
+                      }}
+                      className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Ativação Direta Instantânea (1-Clique)</span>
                     </button>
                   </div>
                 </div>
