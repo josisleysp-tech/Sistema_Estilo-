@@ -48,7 +48,7 @@ import {
   WhatsAppConfig
 } from '../lib/types';
 
-import { getDeliveryAlertStatus, safeSetItem } from '../lib/utils';
+import { getDeliveryAlertStatus, safeSetItem, cleanupObsoleteSalesOrders } from '../lib/utils';
 
 // Import Tab Components
 import DashboardTab from '../components/DashboardTab';
@@ -1078,6 +1078,14 @@ export default function Page() {
   React.useEffect(() => {
     async function loadSupabaseData() {
       if (typeof window === 'undefined') return;
+
+      // Executa rotina de limpeza de vendas antigas/obsoletas e chaves temporárias para otimizar espaço
+      try {
+        cleanupObsoleteSalesOrders();
+      } catch (e) {
+        // ignora se falhar
+      }
+
       const loadLocalStorageFallback = () => {
         const localInventory = localStorage.getItem('erpf_inventory');
         const localProduction = localStorage.getItem('erpf_production_orders');

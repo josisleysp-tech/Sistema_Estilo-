@@ -6,67 +6,227 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Sanitiza recursivamente objetos e arrays removendo strings extensas (como imagens/anexos em base64)
+ * mantendo a estrutura de dados enxuta para salvamento em cache no localStorage.
+ */
+function deepSanitizeForLocalStorage(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+
+  if (typeof obj === 'string') {
+    if (obj.startsWith('data:') || obj.length > 1000) {
+      return '[Anexo/Imagem omitida do cache local]';
+    }
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepSanitizeForLocalStorage(item));
+  }
+
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      const lowerK = k.toLowerCase();
+      if (
+        typeof v === 'string' &&
+        (v.startsWith('data:') ||
+         v.length > 1000 ||
+         lowerK.includes('base64') ||
+         lowerK.includes('attachment') ||
+         lowerK.includes('drawing') ||
+         lowerK.includes('file'))
+      ) {
+        cleaned[k] = '[Anexo/Imagem omitida do cache local]';
+      } else {
+        cleaned[k] = deepSanitizeForLocalStorage(v);
+      }
+    }
+    return cleaned;
+  }
+
+  return obj;
+}
+
+/**
+ * Executa limpeza e otimização específica para sales_orders e cache no localStorage:
+ * 1. Remove chaves obsoletas/duplicadas (ex: 'sales_orders', 'erpf_sales_orders_backup', 'erpf_temp_*')
+ * 2. Limpa anexos pesados e base64 contidos nas ordens de venda armazenadas em localStorage
+ * 3. Trunca históricos extensos de pedidos antigos ou cancelados no cache local
+ */
+export function cleanupObsoleteSalesOrders(): { clearedKeys: number; cleanedOrders: number; freedKB: number } {
+  if (typeof window === 'undefined') {
+    return { clearedKeys: 0, cleanedOrders: 0, freedKB: 0 };
+  }
+
+  let clearedKeys = 0;
+  let cleanedOrders = 0;
+  let initialSizeKB = 0;
+  let finalSizeKB = 0;
+
+  try {
+    // Medir tamanho inicial aproximado
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) {
+        initialSizeKB += ((localStorage.getItem(k) || '').length * 2) / 1024;
+      }
+    }
+
+    // 1. Remover chaves duplicadas/obsoletas de pedidos de vendas e backups
+    const obsoleteSalesKeys = [
+      'sales_orders',
+      'erpf_sales_orders_backup',
+      'erpf_temp_sales',
+      'erpf_sales_orders_old',
+      'erpf_sales_cache',
+      'erpf_log',
+      'system_parameters_backup'
+    ];
+
+    obsoleteSalesKeys.forEach((key) => {
+      if (localStorage.getItem(key) !== null) {
+        localStorage.removeItem(key);
+        clearedKeys++;
+      }
+    });
+
+    // Remover qualquer outra chave temporária (começando com erpf_temp_ ou contendo _backup)
+    const tempKeysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('erpf_temp_') || k.includes('_backup') || k.includes('_old'))) {
+        tempKeysToRemove.push(k);
+      }
+    }
+    tempKeysToRemove.forEach((k) => {
+      localStorage.removeItem(k);
+      clearedKeys++;
+    });
+
+    // 2. Processar a chave principal 'erpf_sales_orders'
+    const rawSales = localStorage.getItem('erpf_sales_orders');
+    if (rawSales) {
+      try {
+        const salesList = JSON.parse(rawSales);
+        if (Array.isArray(salesList)) {
+          // Otimizar lista de ordens removendo anexos pesados/base64 de projectImages e projectFiles
+          const optimizedSales = salesList.map((order: any) => {
+            if (!order || typeof order !== 'object') return order;
+            cleanedOrders++;
+
+            const copy = { ...order };
+
+            // Otimiza projectImages se existirem (base64 ou strings longas)
+            if (Array.isArray(copy.projectImages)) {
+              copy.projectImages = copy.projectImages.map((img: string) =>
+                typeof img === 'string' && (img.startsWith('data:') || img.length > 500)
+                  ? '[Imagem omitida do cache local]'
+                  : img
+              );
+            }
+
+            // Otimiza projectFiles se existirem
+            if (Array.isArray(copy.projectFiles)) {
+              copy.projectFiles = copy.projectFiles.map((file: any) => {
+                if (file && typeof file === 'object') {
+                  return {
+                    ...file,
+                    data: typeof file.data === 'string' && (file.data.startsWith('data:') || file.data.length > 500)
+                      ? '[Anexo omitido do cache local]'
+                      : file.data
+                  };
+                }
+                return file;
+              });
+            }
+
+            // Se a ordem estiver cancelada ou for muito antiga com histórico extenso, simplifica o histórico
+            if ((copy.status === 'Cancelado' || copy.status === 'Entregue') && Array.isArray(copy.history) && copy.history.length > 5) {
+              copy.history = copy.history.slice(-5);
+            }
+
+            return copy;
+          });
+
+          localStorage.setItem('erpf_sales_orders', JSON.stringify(optimizedSales));
+        }
+      } catch (e) {
+        console.warn('Erro ao otimizar erpf_sales_orders em localStorage:', e);
+      }
+    }
+
+    // Recalcular tamanho final
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) {
+        finalSizeKB += ((localStorage.getItem(k) || '').length * 2) / 1024;
+      }
+    }
+  } catch (err) {
+    console.warn('Erro na limpeza de sales_orders em localStorage:', err);
+  }
+
+  const freedKB = Math.max(0, Math.round(initialSizeKB - finalSizeKB));
+  return { clearedKeys, cleanedOrders, freedKB };
+}
+
+/**
  * Armazena dados de forma segura no localStorage prevenindo erros de cota (QuotaExceededError).
- * Caso a memória do navegador fique cheia, sanitiza conteúdos pesados (como base64/imagens)
- * ou falha silenciosamente sem interromper a aplicação.
+ * Caso a memória do navegador fique cheia, executa limpeza automática de ordens antigas e sanitiza conteúdos pesados.
  */
 export function safeSetItem(key: string, value: string): boolean {
   if (typeof window === 'undefined') return false;
 
-  try {
-    localStorage.setItem(key, value);
-    return true;
-  } catch (err: any) {
-    console.warn(`[localStorage] Excesso de cota ao salvar a chave "${key}". Otimizando dados...`, err);
-
-    // Estratégia 1: Sanitização de campos pesados (como imagens/base64 longos)
+  // Se for a chave de pedidos de venda e o valor for grande (>150KB), sanitiza previamente antes de tentar salvar
+  let dataToSave = value;
+  if (key === 'erpf_sales_orders' && value.length > 150000) {
     try {
       const parsed = JSON.parse(value);
       if (Array.isArray(parsed)) {
-        const sanitized = parsed.map((item: any) => {
-          if (!item || typeof item !== 'object') return item;
-          const clone = { ...item };
-          for (const k of Object.keys(clone)) {
-            if (typeof clone[k] === 'string' && clone[k].length > 30000) {
-              clone[k] = '[Dados extensos resumidos para cache local]';
-            }
-          }
-          return clone;
-        });
+        dataToSave = JSON.stringify(deepSanitizeForLocalStorage(parsed));
+      }
+    } catch (e) {
+      // ignora se parse falhar
+    }
+  }
 
-        const sanitizedStr = JSON.stringify(sanitized);
+  // 1. Tenta salvar
+  try {
+    localStorage.setItem(key, dataToSave);
+    return true;
+  } catch (firstErr) {
+    // 2. Executa rotina de limpeza para remover chaves de vendas antigas/obsoletas e temporárias
+    cleanupObsoleteSalesOrders();
+
+    // 3. Tenta salvar o valor sanitizado
+    let parsedData: any = null;
+    try {
+      parsedData = JSON.parse(value);
+    } catch (e) {
+      parsedData = null;
+    }
+
+    if (parsedData) {
+      try {
+        const sanitizedData = deepSanitizeForLocalStorage(parsedData);
+        const sanitizedStr = JSON.stringify(sanitizedData);
         localStorage.setItem(key, sanitizedStr);
-        console.info(`[localStorage] Chave "${key}" salva com sucesso após otimização de imagens/anexos.`);
         return true;
+      } catch (sanitizedErr) {
+        // Se ainda exceder cota, reduz a lista para as ordens/itens mais recentes
+        if (Array.isArray(parsedData) && parsedData.length > 15) {
+          try {
+            const recentItems = parsedData.slice(-15);
+            const sanitizedRecent = deepSanitizeForLocalStorage(recentItems);
+            localStorage.setItem(key, JSON.stringify(sanitizedRecent));
+            return true;
+          } catch (recentErr) {
+            // Ignora
+          }
+        }
       }
-    } catch (e) {
-      // Ignora erro de parse
     }
 
-    // Estratégia 2: Limpeza de chaves temporárias obsoletas no localStorage
-    try {
-      const obsoleteKeys = ['erpf_temp_pdf', 'erpf_log', 'system_parameters_backup'];
-      obsoleteKeys.forEach(k => localStorage.removeItem(k));
-      localStorage.setItem(key, value);
-      return true;
-    } catch (e) {
-      // Ignora
-    }
-
-    // Estratégia 3: Limitar itens do histórico mais antigos no cache offline local
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed) && parsed.length > 30) {
-        const reduced = parsed.slice(-30);
-        localStorage.setItem(key, JSON.stringify(reduced));
-        console.info(`[localStorage] Chave "${key}" salva retendo os 30 registros mais recentes.`);
-        return true;
-      }
-    } catch (e) {
-      // Ignora
-    }
-
-    console.warn(`[localStorage] Não foi possível persistir a chave "${key}" no cache local do navegador devido à cota de memória.`);
     return false;
   }
 }

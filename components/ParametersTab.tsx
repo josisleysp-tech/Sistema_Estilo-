@@ -20,9 +20,12 @@ import {
   Lock,
   RefreshCw,
   CheckCircle2,
-  XCircle
+  XCircle,
+  HardDrive,
+  Sparkles
 } from 'lucide-react';
 import { Customer } from '../lib/types';
+import { cleanupObsoleteSalesOrders } from '../lib/utils';
 
 interface SystemParams {
   companyName: string;
@@ -83,6 +86,18 @@ export default function ParametersTab({
 
   // Toast / notification state
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [storageMessage, setStorageMessage] = useState<string | null>(null);
+
+  const handleCleanupStorage = () => {
+    try {
+      const res = cleanupObsoleteSalesOrders();
+      setStorageMessage(`Limpeza concluída: ${res.freedKB} KB liberados (${res.cleanedOrders} pedidos otimizados, ${res.clearedKeys} chaves antigas removidas).`);
+      setTimeout(() => setStorageMessage(null), 6000);
+    } catch (err: any) {
+      setStorageMessage('Erro ao executar limpeza do armazenamento local.');
+      setTimeout(() => setStorageMessage(null), 4000);
+    }
+  };
 
   // States for live Supabase Database Table Verification
   const [dbStatus, setDbStatus] = useState<'idle' | 'checking' | 'connected' | 'error' | 'unconfigured'>('checking');
@@ -784,6 +799,37 @@ export default function ParametersTab({
                 <span className="font-mono text-slate-300">Em tempo real (API Sync)</span>
               </div>
             </div>
+          </div>
+
+          {/* C. LocalStorage & Cache Cleanup Card */}
+          <div className="bg-slate-900 border border-slate-950 rounded-xl p-5 shadow-sm text-slate-300 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-xs font-bold uppercase text-cyan-400 tracking-wider">Otimização de Cache Local (Browser)</h3>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Remove chaves obsoletas de pedidos de vendas (<code className="text-cyan-300 font-mono text-[10px]">sales_orders</code>), 
+              limpa anexos/imagens em base64 antigos e previne o erro de cota excedida (<code className="text-slate-300 font-mono text-[10px]">QuotaExceededError</code>).
+            </p>
+
+            {storageMessage && (
+              <div className="bg-cyan-950/60 border border-cyan-800/60 rounded-lg p-2.5 text-[11px] text-cyan-200 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>{storageMessage}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleCleanupStorage}
+              className="w-full flex items-center justify-center gap-2 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 hover:text-white border border-cyan-800/60 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Executar Limpeza de Vendas Obsoletas</span>
+            </button>
           </div>
 
         </div>
